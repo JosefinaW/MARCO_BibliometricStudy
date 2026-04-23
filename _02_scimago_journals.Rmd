@@ -1,0 +1,328 @@
+---
+title: "scimago_journals"
+author: "Josefina Weinerova"
+date: "2025-08-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# package loading
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView,sjrdata,openxlsx
+)
+```
+#load relevant datasets
+```{r}
+
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+df_journals <- sjr_journals
+```
+
+# prepare the datasets for matching 
+```{r}
+
+df_journals_L <- df_journals %>%
+  separate_rows(issn, sep = "[, ]+") %>%  # split on comma or space
+  mutate(issn = str_trim(issn))
+#write.xlsx(df_journals_L,"df_journals_L.xlsx")
+
+## for metadata from OA output
+df_meta <- df_meta %>% mutate(issn = str_replace_all(issn_l, "-", ""))
+
+# merge - selecting the journals that the original studies have been published in
+journals_orig <- merge(
+  df_meta, df_journals_L,
+  by = "issn",
+  all.x = TRUE,
+  suffixes = c("_s", "")   
+)
+
+# did I lose any dois?
+setdiff(df_meta$doi_o,journals_orig$doi_o)
+#match journals in the same year or in the closest year
+# exact matches per work (keep all of them)
+exacts <- journals_orig %>%
+  group_by(id) %>%                 # or group_by(doi)
+  filter(publication_year == year) %>%
+  ungroup()
+
+# for works with no exact match, keep the closest year (break ties by earlier year)
+closest <- journals_orig %>%
+  filter(!id %in% exacts$id) %>%   
+  group_by(id) %>%
+  mutate(diff = abs(publication_year - year)) %>%
+  arrange(diff, year, .by_group = TRUE) %>%   
+  slice_head(n = 1) %>%
+  select(-diff) %>%
+  ungroup()
+
+# 3) combine
+journals_best <- bind_rows(exacts, closest)
+setdiff(df_meta$doi_o,journals_best$doi_o) #checking that all dois that are in the meta df are also in the journals_best
+
+```
+# cleaning
+```{r}
+journals_orig<- journals_best
+#cleaning the datasets
+df_journals$categories <- str_replace_all(df_journals$categories, "\\s*\\(Q\\d+\\)", "")
+journals_orig$categories <- str_replace_all(journals_orig$categories, "\\s*\\(Q\\d+\\)", "")
+
+```
+
+
+```{r}
+# If SJR is missing for the target journal-year, keep it missing:
+# those targets will only retain the original journal-year as control.
+journals_orig %>% filter(is.na(sjr))
+```
+
+# Function to find closest journals by category and sjr
+
+```{r}
+#divide categories from one column into column per category
+K <- df_journals %>%
+  summarise(max_k = max(str_count(coalesce(categories, ""), ";"), na.rm = TRUE) + 1) %>%
+  pull(max_k)
+K2 <- journals_orig  %>%
+  summarise(max_k = max(str_count(coalesce(categories, ""), ";"), na.rm = TRUE) + 1) %>%
+  pull(max_k)
+K_all <- max(K, K2)
+
+df_journals <- df_journals %>%
+  separate(
+    categories,
+    into = paste0("cat_", seq_len(K_all)),
+    sep = "\\s*;\\s*",   # split on ';' and trim spaces
+    fill = "right",      # pad with NAs to the right
+    remove = TRUE)
+
+journals_orig <- journals_orig %>%
+  separate(
+    categories,
+    into = paste0("cat_", seq_len(K_all)),
+    sep = "\\s*;\\s*",   # split on ';' and trim spaces
+    fill = "right",      # pad with NAs to the right
+    remove = TRUE)
+#for a journal find other journals that match one of the categories and sjr range and year
+# Identify category columns dynamically
+cat_cols <- paste0("cat_", seq_len(K_all))
+
+#--- 1) Targets (O): one row per DOI-year, long by category token
+O_long <- journals_orig %>%
+  mutate(
+    sjr_target = as.numeric(sjr),
+    sjr_min    = sjr_target * 0.75,
+    sjr_max    = sjr_target * 1.25
+  ) %>%
+  dplyr::select(doi_o, year, sjr_target, sjr_min, sjr_max, all_of(cat_cols)) %>%
+  pivot_longer(all_of(cat_cols), names_to = "cat", values_to = "token") %>%
+  filter(!is.na(token), token != "") %>%
+  mutate(token = str_trim(token)) %>%
+  distinct(doi_o, year, sjr_target, sjr_min, sjr_max, token)   # de-dup tokens per DOI
+
+#--- 2) Pool (J): one row per journal-year, long by category token
+J_long <- df_journals %>%
+  mutate(sjr_pool = as.numeric(sjr)) %>%
+  select(sourceid, year, sjr_pool, all_of(cat_cols)) %>%
+  pivot_longer(all_of(cat_cols), names_to = "cat", values_to = "token") %>%
+  filter(!is.na(token), token != "") %>%
+  mutate(token = str_trim(token)) %>%
+  distinct(sourceid, year, sjr_pool, token)                 # de-dup tokens per journal
+
+#--- 3) Seed with original journal (always included)
+seed_orig <- journals_orig %>%
+  transmute(
+    doi_o, year, sourceid,
+    overlap = NA_integer_,
+    tokens = NA_character_,
+    sjr_target = as.numeric(sjr),
+    sjr_pool = as.numeric(sjr),
+    sjr_diff = 0,
+    sjr, title, issn, across(all_of(cat_cols)),
+    topup = FALSE,
+    match_stage = "original",
+    relax_step = NA_character_
+  ) %>%
+  distinct(doi_o, year, sourceid, .keep_all = TRUE)
+
+#--- 4) Strict candidates (for non-missing target SJR only)
+cand_strict <- O_long %>%
+  filter(!is.na(sjr_target)) %>%
+  inner_join(J_long, by = c("year", "token")) %>%
+  filter(between(sjr_pool, sjr_min, sjr_max))
+
+#--- 5) Collapse strict candidates to pair-level and compute overlap + closeness
+pairs_strict <- cand_strict %>%
+  dplyr::group_by(doi_o, sourceid, year) %>%
+  summarise(
+    overlap    = n_distinct(token),
+    tokens     = paste(unique(token), collapse = "; "),# # of shared categories
+    sjr_target = first(sjr_target),
+    sjr_pool   = first(sjr_pool),
+    sjr_diff   = abs(sjr_pool - sjr_target),
+    .groups = "drop"
+  )
+
+# strict matches ordered by overlap, then closeness
+strict_add <- pairs_strict %>%
+  group_by(doi_o, year) %>%
+  arrange(desc(overlap), sjr_diff, .by_group = TRUE) %>%
+  distinct(sourceid, .keep_all = TRUE) %>%
+  slice_head(n = 6) %>%
+  ungroup() %>%
+  left_join(
+    df_journals %>%
+      select(sourceid, year, sjr, title, issn, all_of(cat_cols)),
+    by = c("sourceid", "year")
+  ) %>%
+  mutate(
+    topup = FALSE,
+    match_stage = "strict",
+    relax_step = NA_character_
+  )
+
+# combine and deduplicate: keep original row if the same sourceid-year appears
+matched_pool <- bind_rows(seed_orig, strict_add) %>%
+  distinct(doi_o, year, sourceid, .keep_all = TRUE)
+```
+#loose criteria for those that did not find a match
+```{r}
+all_keys <- journals_orig %>% distinct(doi_o, year)
+
+compute_needs <- function(pool, all_keys, min_n = 3L) {
+  all_keys %>%
+    left_join(pool %>% count(doi_o, year, name = "n_rows"), by = c("doi_o", "year")) %>%
+    mutate(
+      n_rows = coalesce(n_rows, 0L),
+      to_take = pmax(0L, min_n - n_rows)
+    ) %>%
+    filter(to_take > 0L)
+}
+
+needs <- compute_needs(matched_pool, all_keys, min_n = 3L)
+
+# progressively relax SJR window until reaching at least 3 matches where possible
+relax_windows <- tibble(
+  label = c("50%", "100%", "none"),
+  window = c(0.50, 1.00, Inf)
+)
+
+for (i in seq_len(nrow(relax_windows))) {
+  if (nrow(needs) == 0) break
+
+  w <- relax_windows$window[i]
+  lbl <- relax_windows$label[i]
+
+  O_need <- O_long %>%
+    semi_join(needs, by = c("doi_o", "year"))
+
+  cand_relaxed <- O_need %>%
+    inner_join(J_long, by = c("year", "token")) %>%
+    # if target SJR is missing, keep only original seeded match
+    filter(!is.na(sjr_target)) %>%
+    anti_join(
+      matched_pool %>% distinct(doi_o, year, sourceid),
+      by = c("doi_o", "year", "sourceid")
+    )
+
+  if (is.finite(w)) {
+    cand_relaxed <- cand_relaxed %>%
+      filter(between(sjr_pool, sjr_target * (1 - w), sjr_target * (1 + w)))
+  }
+
+  if (nrow(cand_relaxed) == 0) {
+    next
+  }
+
+  pairs_relaxed <- cand_relaxed %>%
+    group_by(doi_o, sourceid, year) %>%
+    summarise(
+      overlap    = n_distinct(token),
+      tokens     = paste(unique(token), collapse = "; "),
+      sjr_target = first(sjr_target),
+      sjr_pool   = first(sjr_pool),
+      sjr_diff   = abs(sjr_pool - sjr_target),
+      .groups = "drop"
+    )
+
+  add_these <- pairs_relaxed %>%
+    inner_join(needs %>% select(doi_o, year, to_take), by = c("doi_o", "year")) %>%
+    group_by(doi_o, year) %>%
+    arrange(sjr_diff, desc(overlap), .by_group = TRUE) %>%
+    distinct(sourceid, .keep_all = TRUE) %>%
+    mutate(rank = row_number()) %>%
+    filter(rank <= first(to_take)) %>%
+    select(-rank, -to_take) %>%
+    ungroup()
+
+  add_these_full <- add_these %>%
+    left_join(
+      df_journals %>% select(sourceid, year, sjr, title, issn, all_of(cat_cols)),
+      by = c("sourceid", "year")
+    ) %>%
+    mutate(
+      topup = TRUE,
+      match_stage = "relaxed",
+      relax_step = lbl
+    )
+
+  matched_pool <- bind_rows(matched_pool, add_these_full) %>%
+    distinct(doi_o, year, sourceid, .keep_all = TRUE)
+
+  needs <- compute_needs(matched_pool, all_keys, min_n = 3L)
+}
+
+if (nrow(needs) > 0) {
+  message(sprintf("Still below 3 matches for %d doi-year pairs after all relaxation steps.", nrow(needs)))
+}
+
+# final per doi-year cap at 6 (keep original first, then strict, then progressively relaxed)
+top6_full <- matched_pool %>%
+  mutate(
+    stage_priority = case_when(
+      match_stage == "original" ~ 0L,
+      match_stage == "strict" ~ 1L,
+      relax_step == "50%" ~ 2L,
+      relax_step == "100%" ~ 3L,
+      relax_step == "none" ~ 4L,
+      TRUE ~ 9L
+    )
+  ) %>%
+  group_by(doi_o, year) %>%
+  arrange(stage_priority, desc(overlap), sjr_diff, .by_group = TRUE) %>%
+  slice_head(n = 6) %>%
+  ungroup() %>%
+  select(-stage_priority) %>%
+  add_count(doi_o, year, name = "n_rows")
+table(top6_full$n_rows)
+
+#join also journals orig info
+journals_orig$sourceid_orig <- journals_orig$sourceid
+journals_orig$year_orig <- journals_orig$year
+orig_data <- journals_orig %>% select(doi_o,sourceid,publication_year)
+nrow(journals_orig)
+matched_journals <- merge(top6_full,orig_data, by="doi_o")
+matched_journals <- distinct(matched_journals)
+
+table(matched_journals$n_rows)
+head(matched_journals)
+setdiff(df_meta$doi_o,matched_journals$doi_o)
+matched_journals %>% filter(doi_o=="10.1007/s10802-020-00712-w")
+```
+
+
+#save output
+```{r}
+saveRDS(df_journals_L,"data/df_journals_L.rds")
+saveRDS(matched_journals, "data/matched_journals_pilot.rds")
+
+```

@@ -1,0 +1,1356 @@
+---
+title: "_0_power"
+author: "Josefina Weinerova"
+date: "2025-11-21"
+output: html_document
+---
+```{r}
+# install.packages("openalexR")
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView, rscopus, httr2, plotly, MASS, GGally, metafor, progressr, readxl, openxlsx
+)
+
+# loading data
+analysis_df <- readxl::read_excel("data/analysis_df.xlsx")
+cos_sample <- readxl::read_excel("2025-02-07_COSdata_validated_delivered.xlsx")
+all_matched_articles <- readxl::read_excel("data/all_matched_articles_pilot.xlsx")
+
+
+plan(multisession, workers = availableCores() - 1) # @Josefina: To enable parallel processing. If you are on Mac, you can also try multicore instead of multisession - faster but less stable
+
+my_seed <- 123
+```
+
+
+## Power
+## Data-Generating Process (Simulation Outline)
+
+1. Get summary metrics from a sample of control studies
+- first year citations
+- cumulative last year citations
+- number of years
+- average growth (average number of citations per year)
+- early growth (average number of citations in first 3 years)
+
+2. Create Gaussian multivariate distribution by first ranking the individual metrics and then creating normal distribution
+- calculate correlation among different summary metrics
+- in the normal space simulate 100,000 new studies by sampling from the distribution while keeping the correlation intact
+- transport back to original space by inverse function
+
+# @Josefina: clarify above that you did not simulate collinear variables (e.g., total citations and average growth are collinear)
+
+3. Use the 5 summary metrics to create citation trajectories of the simulated studies
+
+4. select 10,000 studies as treated studies
+- select year of treatment start; effect starts 1 year later (use `D_lag`)
+- apply effect via *Poisson thinning*: for treated-years, `y_new ~ Binomial(y, p = effect_mult)`, which preserves the discrete observed trajectory while reducing expected counts
+
+5. run fect analysis 100 times for each effect size, collect p.values and ATTs
+
+# what do real citation trajectories look like   
+
+```{r}
+analysis_df$year <- as.numeric(analysis_df$year)
+treated_dois <- cos_sample$doi_o
+analysis_df <- analysis_df %>%
+  dplyr::group_by(doi_queried) %>%
+  complete(year = full_seq(c(min(year), max(year)), 1), fill = list(n_citations = 0)) %>%
+  ungroup()
+
+doi_sample <- analysis_df %>%
+  dplyr::distinct(doi_queried) %>%
+  dplyr::filter(!(doi_queried %in% treated_dois)) %>%
+  dplyr::pull(doi_queried)
+
+doi_sample <- sample(doi_sample, size = min(10000, length(doi_sample)))
+
+# 1) Compute cumulative citations per doi over time for a sample of 200 dois
+analysis_df_cum <- analysis_df %>% filter(doi_queried %in% doi_sample)
+range(analysis_df_cum$year)
+# checking for weird start years
+# Josefina: commented out as analysis_df_cum already contains publication year
+# Lukas: This is checking for years that are impossibly early. analysis_df_cum has year but not publication year - this removes years that are impossibly early
+analysis_df_cum <- analysis_df_cum %>%
+  left_join(
+    all_matched_articles %>%
+      dplyr::select(doi, publication_year),
+    by = c("doi_queried" = "doi")
+  )
+
+analysis_df_cum <- analysis_df_cum %>% filter(year >= publication_year)
+analysis_df_cum <- analysis_df_cum %>%
+  arrange(doi_queried, year) %>%
+  dplyr::group_by(doi_queried) %>%
+  mutate(cum_citations = cumsum(dplyr::coalesce(n_citations, 0))) %>%
+  ungroup()
+
+analysis_df_cum$year <- as.numeric(analysis_df_cum$year)
+analysis_df_cum <- analysis_df_cum %>%
+  dplyr::group_by(doi_queried) %>%
+  mutate(time_since_pub = year - publication_year + 1) %>%
+  ungroup()
+summary(analysis_df_cum$cum_citations)
+# not normalized
+ggplot(
+  analysis_df_cum,
+  aes(
+    x = time_since_pub,
+    y = cum_citations,
+    group = doi_queried
+  )
+) +
+  geom_line(alpha = 0.1) +
+  labs(
+    x = "Year",
+    y = "Cumulative citations",
+    color = "DOI",
+    title = "Cumulative citation growth over time"
+  ) +
+  theme_minimal() +
+  scale_y_log10()
+
+
+# @Josefina: these numbers seem too high - median cumuulative citations are 54 at the end of the period, while I have usually seen *much* lower numbers, e.g.,  https://lucbeaulieu.com/2015/11/19/how-many-citations-are-actually-a-lot-of-citations/. This could of course be right as replication targets are not selected randomly - but can you please double-check and then explicitly note that divergence? [And consider whetre to place that in the article?] Also, is our method excluding articles with 0 citations? We have 12 of them, which seems really low ...
+```
+#plotting distribution of parameters
+
+```{r}
+citation_summary <- analysis_df_cum %>%
+  dplyr::group_by(doi_queried) %>%
+  arrange(time_since_pub) %>%
+  mutate(
+    yearly_cites = cum_citations - lag(cum_citations, default = 0)
+  ) %>%
+  dplyr::summarise(
+    first_year_citations = yearly_cites[time_since_pub == 1],
+    max_cumulative = max(cum_citations),
+    years_observed = max(time_since_pub),
+    avg_yearly_growth = mean(yearly_cites),
+    early_growth = mean(yearly_cites[time_since_pub <= min(3, years_observed)]),
+    linear_slope = coef(lm(cum_citations ~ time_since_pub))[2],
+    log_slope = coef(lm(log1p(cum_citations) ~ time_since_pub))[2]
+  )
+
+citation_summary <- na.omit(citation_summary)
+plot_ly(
+  citation_summary,
+  x = ~first_year_citations,
+  y = ~max_cumulative,
+  z = ~years_observed,
+  color = ~doi_queried, # color by DOI
+  colors = "Dark2",
+  type = "scatter3d",
+  mode = "markers"
+)
+
+citation_summary <- as.data.frame(citation_summary)
+
+summary(citation_summary)
+cor(citation_summary %>% dplyr::select(-doi_queried))
+
+
+ggpairs(citation_summary, columns = 2:8)
+```
+
+
+#sampling from real distributions
+```{r}
+vars <- citation_summary %>%
+  dplyr::select(
+    first_year_citations,
+    max_cumulative,
+    years_observed,
+    avg_yearly_growth,
+    early_growth
+  )
+
+n <- nrow(vars)
+
+# empirical CDF via ranks, then map to normal
+to_normal <- function(x) {
+  u <- (rank(x, ties.method = "average") - 0.5) / n # in (0,1)
+  qnorm(u) # ≈ N(0,1)
+}
+
+Z <- vars %>%
+  mutate(across(everything(), to_normal)) %>%
+  as.matrix()
+
+
+Sigma <- cor(Z)
+
+n_sim <- 100000
+
+Z_sim <- mvrnorm(n = n_sim, mu = rep(0, ncol(Z)), Sigma = Sigma)
+colnames(Z_sim) <- colnames(vars)
+
+
+# helper: empirical quantile function
+inv_ecdf <- function(x, u) {
+  # u in (0,1); use type=8 interpolation
+  quantile(x, probs = u, type = 8, na.rm = TRUE)
+}
+
+U_sim <- pnorm(Z_sim) # now values in (0,1)
+
+sim_vars <- matrix(NA, nrow = n_sim, ncol = ncol(vars))
+colnames(sim_vars) <- colnames(vars)
+
+for (j in seq_along(vars)) {
+  sim_vars[, j] <- inv_ecdf(vars[[j]], U_sim[, j])
+}
+
+sim_summaries <- as.data.frame(sim_vars)
+
+summary(sim_summaries)
+```
+
+
+#simulate from summaries
+```{r}
+simulate_yearly_from_summary <- function(
+  Time,
+  total,
+  first1,
+  early_growth = NULL,
+  last_year = 2025
+) {
+  # Edge cases:
+  Time <- max(1, round(Time))
+  total <- max(0, round(total))
+  first1 <- round(first1)
+
+  # If no citations at all
+  if (total == 0) {
+    years <- seq(last_year - Time + 1, last_year)
+    return(tibble(
+      year = years,
+      yearly_cites = rep(0, Time),
+      cum_cites = rep(0, Time)
+    ))
+  }
+
+  # If only 1 year observed, everything happens in that year
+  if (Time == 1) {
+    years <- last_year
+    return(tibble(
+      year = years,
+      yearly_cites = total,
+      cum_cites = total
+    ))
+  }
+
+  # Ensure first-year citations are between 0 and total
+  first1 <- max(0, min(first1, total))
+
+  # ---- Baseline linear shape ----
+  # yearly(t) = a + b*t
+  b <- 2 * (total - Time * first1) / (Time * (Time - 1))
+  a <- first1 - b
+
+  t_seq <- 1:Time
+  lam <- a + b * t_seq
+
+  # ---- Shape adjustment using ONLY early_growth ----
+  # derive the implied average yearly citations from (total, T)
+  avg_growth_derived <- total / Time
+
+  if (!is.null(early_growth) && is.finite(early_growth) && avg_growth_derived > 0) {
+    # early_ratio > 1 -> front-loaded, < 1 -> back-loaded
+    early_ratio <- early_growth / avg_growth_derived
+
+    # clamp to avoid crazy numbers
+    early_ratio <- pmin(pmax(early_ratio, 0.3), 3)
+
+    # smooth warping parameter
+    k <- log(early_ratio) / max(Time - 1, 1)
+
+    # weights over time
+    w <- exp(-k * (t_seq - 1))
+
+    lam <- lam * w
+  }
+
+  # Enforce non-negativity
+  lam[lam < 0] <- 0
+
+  # If everything went to zero, fall back to uniform
+  if (sum(lam) == 0) {
+    lam <- rep(total / Time, Time)
+  } else {
+    # Rescale lambdas so they sum exactly to total in expectation
+    lam <- lam * (total / sum(lam))
+  }
+
+  # Generate integer yearly citations (Poisson noise)
+  yearly <- rpois(Time, lambda = lam)
+
+  # Avoid the degenerate all-zero case
+  if (sum(yearly) == 0) {
+    yearly <- round(lam)
+  }
+
+  # Adjust mismatch so sum(yearly) == total
+  diff <- total - sum(yearly)
+  if (diff != 0) {
+    idx <- sample(1:Time, size = abs(diff), replace = TRUE)
+    for (i in idx) {
+      yearly[i] <- yearly[i] + sign(diff)
+    }
+    yearly[yearly < 0] <- 0
+  }
+
+  cum <- cumsum(yearly)
+  years <- seq(last_year - Time + 1, last_year)
+
+  tibble(
+    year = years,
+    yearly_cites = yearly,
+    cum_cites = cum
+  )
+}
+```
+
+#apply to simulated studies
+```{r}
+sim_summaries <- sim_summaries %>%
+  mutate(doi_queried = row_number())
+
+
+handlers(handler_rstudio())
+
+with_progress({
+  simulated_trajectories <- sim_summaries %>%
+    dplyr::select(
+      doi_queried,
+      years_observed,
+      max_cumulative,
+      first_year_citations,
+      early_growth
+    ) %>%
+    future_pmap_dfr(
+      function(doi_queried,
+               years_observed,
+               max_cumulative,
+               first_year_citations,
+               early_growth) {
+        simulate_yearly_from_summary(
+          Time = years_observed,
+          total = max_cumulative,
+          first1 = first_year_citations,
+          early_growth = early_growth,
+          last_year = 2025
+        ) %>%
+          mutate(study_id = doi_queried, .before = 1)
+      },
+      .progress = TRUE,
+      .options = furrr_options(seed = my_seed)
+    )
+})
+
+range(simulated_trajectories$year)
+simulated_trajectories <- simulated_trajectories %>%
+  dplyr::group_by(study_id) %>%
+  mutate(
+    start_year = min(year),
+    time_since_pub = year - start_year + 1
+  ) %>%
+  ungroup()
+
+# not normalized
+ggplot(
+  simulated_trajectories,
+  aes(
+    x = time_since_pub,
+    y = cum_cites,
+    group = study_id
+  )
+) +
+  geom_line(alpha = 0.1) +
+  labs(
+    x = "Year",
+    y = "Cumulative citations",
+    color = "DOI",
+    title = "Simulated cumulative citation growth over time"
+  ) +
+  theme_minimal() +
+  scale_y_log10()
+
+# @Josefina: cum_cites here is substantially higher than in analysis_df_cum - median is 73 rather than 54. Is that expected?
+```
+
+```{r}
+# min_post_years <- 5L  # require at least 5 years with D==1 @Josefina: why? Don't we only have *pre* restrictions? - @This was one of the things I did when the power analysis stoped
+
+study_info <- simulated_trajectories %>%
+  dplyr::group_by(study_id) %>%
+  dplyr::summarise(
+    start_year = min(year),
+    end_year = max(year),
+    .groups = "drop"
+  )
+
+
+study_info <- study_info %>%
+  mutate(
+    treat_from = pmax(start_year + 5, 2010L),
+    treat_to   = 2024L
+  ) %>%
+  filter(treat_from <= treat_to)
+
+
+summary(study_info)
+
+# sample treated studies
+set.seed(123)
+
+treated_ids <- sample(study_info$study_id, size = 10000)
+
+# assign treatment
+treat_info <- study_info %>%
+  filter(study_id %in% treated_ids) %>%
+  rowwise() %>%
+  mutate(
+    treat_year = if_else(
+      treat_from == treat_to,
+      treat_from,
+      sample(treat_from:treat_to, size = 1)
+    )
+  ) %>%
+  ungroup() %>%
+  dplyr::select(study_id, treat_year)
+
+
+sim_with_treat <- simulated_trajectories %>%
+  left_join(treat_info, by = "study_id") %>%
+  mutate(
+    treated = !is.na(treat_year),
+    # D = 1 in the treatment year and all years after
+    D = if_else(
+      is.na(treat_year), # untreated studies
+      0L,
+      if_else(year >= treat_year, 1L, 0L)
+    )
+  )
+
+sim_with_treat <- sim_with_treat %>%
+  dplyr::group_by(study_id) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(
+    D_lag = dplyr::lag(D, default = 0L) # D_{t-1}
+  ) %>%
+  ungroup()
+
+## commented for the full run, this part is already implemented below, here it was used as checks for the effect implementation before the run
+
+## Previous approach (stochastic rounding) kept for reference; main simulation now uses Poisson thinning
+# sim_with_treat <- sim_with_treat %>%
+#   mutate(
+#     lambda_baseline = pmax(yearly_cites, 0),
+#     lambda_treated  = if_else(
+#       D_lag == 1L,                 # or D == 1L if you want instantaneous effect
+#       0.8 * lambda_baseline,
+#       lambda_baseline
+#     ),
+#     lambda_treated = pmax(lambda_treated, 0),   # safety
+#
+#     # stochastic rounding:
+#     floor_val = floor(lambda_treated),
+#     frac      = lambda_treated - floor_val,     # e.g. 0.80 for 3.80
+#     frac      = pmin(pmax(frac, 0), 1),         # clamp to [0,1]
+#
+#     # add Bernoulli(frac): 1 with prob = frac, 0 otherwise
+#     yearly_cites_new = floor_val + rbinom(n(), size = 1, prob = frac)
+#   )
+```
+#plot after adding treatment
+```{r}
+set.seed(123)
+example_effect_mult <- 0.9
+sim_with_treat_example <- sim_with_treat %>%
+  mutate(
+    yearly_cites_new = if_else(
+      D_lag == 1L,
+      rbinom(n(), size = pmax(yearly_cites, 0), prob = example_effect_mult), 
+      yearly_cites 
+    )
+  ) %>%
+  dplyr::group_by(study_id) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(cum_cites_new = cumsum(yearly_cites_new)) %>%
+  ungroup()
+
+# did not have publication year and thus time_since_pub in the data - check that my code below is correct
+sim_with_treat_example <- sim_with_treat_example %>%
+  group_by(study_id) %>%
+  mutate(
+    publication_year = min(year),
+    time_since_pub = year - publication_year + 1
+  )
+
+ggplot(
+  sim_with_treat_example,
+  aes(
+    x = time_since_pub,
+    y = cum_cites_new,
+    group = study_id, colour = factor(D_lag)
+  )
+) +
+  geom_line(alpha = 0.2) +
+  labs(
+    x = "Year",
+    y = "Cumulative citations",
+    color = "Treatment status", # @Josefina: renamed from DOI - right?
+    title = "Simulated cumulative citation growth over time"
+  ) +
+  theme_minimal() +
+  scale_y_log10()
+
+a <- sim_with_treat_example %>%
+  dplyr::group_by(study_id) %>%
+  dplyr::filter(any(D == 1L)) %>%
+  dplyr::filter(study_id == 5)
+
+ggplot(a, aes(x = year, group = study_id)) +
+  geom_line(aes(y = yearly_cites, colour = "baseline")) +
+  geom_line(aes(y = yearly_cites_new, colour = "thinned")) +
+  labs(y = "Yearly citations", colour = NULL)
+
+postlag_by_id <- sim_with_treat %>%
+  filter(treated) %>%
+  group_by(study_id) %>%
+  summarise(
+    end_year = max(year),
+    treat_year = first(treat_year),
+    postlag_years = sum(D_lag == 1L),
+    .groups = "drop"
+  )
+
+# @Josefina: this is likely longer than in FReD - but not sure if it matters
+summary(postlag_by_id$postlag_years)
+```
+
+
+```{r}
+unit_treat_status <- sim_with_treat %>%
+  dplyr::group_by(study_id) %>%
+  dplyr::summarise(
+    ever_treated = any(D == 1L),
+    .groups = "drop"
+  )
+
+treated_units <- unit_treat_status$study_id[unit_treat_status$ever_treated]
+untreated_units <- unit_treat_status$study_id[!unit_treat_status$ever_treated]
+```
+
+```{r}
+run_one_fect_sim <- function(iter,
+                             sim_with_treat,
+                             treated_units,
+                             untreated_units,
+                             n_treated = 1000,
+                             n_untreated = 10000,
+                             effect_mult = 0.9,
+                             parallel_fect = TRUE) {
+  set.seed(iter) # optional: reproducible per iteration
+
+  if (!is.finite(effect_mult) || effect_mult < 0 || effect_mult > 1) {
+    stop("Poisson thinning requires effect_mult in [0, 1].")
+  }
+
+  # 1) sample IDs
+  sampled_treated <- sample(treated_units, size = n_treated, replace = FALSE)
+  sampled_untreated <- sample(untreated_units, size = n_untreated, replace = FALSE)
+
+  sampled_ids <- c(sampled_treated, sampled_untreated)
+
+  # 2) subset panel (all years for sampled units), then apply effect only in this sample
+  # Poisson thinning: for treated-years, y_new ~ Binomial(y, p = effect_mult)
+  sample_df <- sim_with_treat %>%
+    filter(study_id %in% sampled_ids) %>%
+    mutate(
+      yearly_cites_new = if_else(
+        D_lag == 1L,
+        rbinom(n(), size = pmax(yearly_cites, 0), prob = effect_mult),
+        yearly_cites
+      )
+    )
+
+
+  # 3) run fect with try()
+  fit <- try(
+    fect(
+      yearly_cites_new ~ D_lag,
+      data = sample_df,
+      index = c("study_id", "year"),
+      method = "ife",
+      r = 2,
+      se = TRUE,
+      parallel = parallel_fect,
+      nboots = 50,
+      min.T0 = 3
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(fit, "try-error")) {
+    return(tibble(att = NA_real_, p.value = NA_real_))
+  }
+
+  att <- NA_real_
+  pval <- NA_real_
+  if (!is.null(fit$est.avg) && "ATT.avg" %in% colnames(fit$est.avg)) {
+    att <- as.numeric(fit$est.avg[1, "ATT.avg"])
+  } else if (!is.null(fit$att.avg)) {
+    att <- as.numeric(fit$att.avg[1]) # @Josefina: what is this conditional for? fect output should be consistent?
+  }
+  if (!is.null(fit$est.avg) && "p.value" %in% colnames(fit$est.avg)) {
+    pval <- as.numeric(fit$est.avg[1, "p.value"])
+  }
+
+  tibble(att = att, p.value = pval)
+}
+```
+
+# run the analysis, takes long time
+
+```{r}
+effect_sizes <- c(0.75, 0.80, 0.85, 0.90)
+treated_sizes <- c(800)
+n_iter <- 100
+
+set.seed(225)
+
+run_power_sims <- function(parallel_strategy = c("outer", "inner"),
+                           trim_pre = 8,
+                           trim_post = 8) {
+  # would expect inner to be better as fect is more computationally intensive
+
+  parallel_strategy <- match.arg(parallel_strategy)
+
+  # trim to avoid too long computation
+  sim_trimmed <- sim_with_treat %>%
+    mutate(
+      event_time = if_else(!is.na(treat_year),
+        year - treat_year,
+        NA_integer_
+      )
+    ) %>%
+    filter(
+      is.na(event_time) |
+        (
+          (is.null(trim_pre) | event_time >= -trim_pre) &
+            (is.null(trim_post) | event_time <= trim_post)
+        )
+    )
+
+
+  ncores <- max(1L, as.integer(future::availableCores()) - 2L)
+  old_plan <- future::plan()
+  on.exit(future::plan(old_plan), add = TRUE)
+  future::plan(future::multisession, workers = ncores)
+
+  sim_grid <- tidyr::expand_grid(
+    effect_mult = effect_sizes,
+    n_treated   = treated_sizes,
+    iter        = 1:n_iter
+  ) %>%
+    dplyr::mutate(n_untreated = 10L * n_treated)
+
+  if (parallel_strategy[1] == "outer") {
+    progressr::with_progress({
+      # map_dfr(
+      furrr::future_map_dfr(
+        1:nrow(sim_grid),
+        function(i) {
+          row <- sim_grid[i, ]
+          out <- run_one_fect_sim(
+            iter            = row$iter,
+            sim_with_treat  = sim_trimmed,
+            treated_units   = treated_units,
+            untreated_units = untreated_units,
+            n_treated       = row$n_treated,
+            n_untreated     = row$n_untreated,
+            effect_mult     = row$effect_mult,
+            parallel_fect   = FALSE
+          )
+
+          dplyr::mutate(
+            out,
+            effect_mult = row$effect_mult,
+            iter        = row$iter,
+            n_treated   = row$n_treated,
+            n_untreated = row$n_untreated
+          )
+        },
+        .options = furrr::furrr_options(seed = TRUE),
+        .progress = TRUE
+      )
+    })
+  } else {
+    progressr::with_progress({
+      p <- progressr::progressor(along = 1:nrow(sim_grid))
+
+      map_dfr(
+        1:nrow(sim_grid),
+        function(i) {
+          p(sprintf("FECT fit %d/%d", i, nrow(sim_grid)))
+          row <- sim_grid[i, ]
+          out <- run_one_fect_sim(
+            iter            = row$iter,
+            sim_with_treat  = sim_trimmed,
+            treated_units   = treated_units,
+            untreated_units = untreated_units,
+            n_treated       = row$n_treated,
+            n_untreated     = row$n_untreated,
+            effect_mult     = row$effect_mult,
+            parallel_fect   = TRUE
+          )
+
+          dplyr::mutate(
+            out,
+            effect_mult = row$effect_mult,
+            iter        = row$iter,
+            n_treated   = row$n_treated,
+            n_untreated = row$n_untreated
+          )
+        },
+        .progress = TRUE
+      )
+    })
+  }
+}
+
+# this is closer to the intended use of progressr - outside functions. That way it works within the Rmd files and also when knitting
+progressr::handlers(handler_rstudio())
+sim_result <- run_power_sims(parallel_strategy = "inner")
+
+#I believe we agreed to reduce min.T0 to r+1? Can you check and change that?
+
+power_summary <- sim_result %>%
+  dplyr::group_by(effect_mult, n_treated, n_untreated) %>%
+  dplyr::summarise(
+    power = mean(p.value <= 0.05 & att < 0, na.rm = TRUE),
+    n_success = sum(!is.na(p.value)),
+    avg_att = mean(att, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+power_summary
+
+# write_csv(sim_result,"power_sim_pilot.csv")
+
+# sim_res <- sim_results_all
+```
+
+# power for metafor - meta-regression
+
+```{r}
+# set.seed(125) # so it runs once reproducibly
+# 
+# # ---- global parameters ----
+# I <- 500
+# mu <- -5
+# tau2 <- 20
+# 
+# beta_m1 <- 1
+# beta_m2 <- 0
+# beta_m3_levels <- c(0, 0.5, 1.8, 1.0, 1.2, 1.5, -0.5, -0.8, -1.0, -2)
+# 
+# beta_c1 <- -0.5
+# beta_c2 <- 0
+# beta_c3 <- 0.6
+# 
+# # ---- simulate moderators once ----
+# mods_study <- data.frame(
+#   study = 1:I,
+#   m1    = rbinom(I, 1, 0.5),
+#   m2    = rbinom(I, 1, 0.4),
+#   m3    = sample(1:10, I, replace = TRUE),
+#   c1    = rnorm(I, mean = 0, sd = 1),
+#   c2    = rnorm(I, mean = 10, sd = 2),
+#   c3    = rnorm(I, mean = 50, sd = 10)
+# )
+# 
+# # treat m3 as a factor so metafor creates dummies vs level 1
+# mods_study$m3 <- factor(mods_study$m3, levels = 1:10)
+# 
+# # ---- simulate sampling variances (vi) once ----
+# # choose something plausible; you can replace this with your own mechanism
+# mods_study$vi <- runif(I, min = 0.5, max = 5)
+# 
+# # ---- generate true effects theta_i ----
+# m3_effect <- beta_m3_levels[as.integer(mods_study$m3)]
+# 
+# theta <- mu +
+#   beta_m1 * mods_study$m1 +
+#   beta_m2 * mods_study$m2 +
+#   m3_effect +
+#   beta_c1 * mods_study$c1 +
+#   beta_c2 * mods_study$c2 +
+#   beta_c3 * mods_study$c3 +
+#   rnorm(I, mean = 0, sd = sqrt(tau2)) # between-study heterogeneity
+# se_fun <- function(n) {
+#   x <- rlnorm(n, meanlog = log(3), sdlog = 0.6)
+#   x[x > 16] <- 16
+#   x
+# }
+# 
+# mods_study$sei <- se_fun(I)
+# mods_study$vi <- mods_study$sei^2
+# # ---- observed study effects yi ----
+# mods_study$yi <- theta + rnorm(I, mean = 0, sd = sqrt(mods_study$vi))
+# 
+# # ---- fit ONE metafor model ----
+# fit <- rma(yi, vi,
+#   mods = ~ m1 + m2 + m3 + c1 + c2 + c3,
+#   data = mods_study,
+#   method = "REML"
+# )
+# 
+# summary(fit)
+# 
+# 
+# fit$pval[2]
+```
+# linear metafor model
+```{r}
+# set.seed(125)
+# 
+# # ---- global parameters ----
+# I <- 500 # number of studies
+# mu <- -5 # true average ATT
+# tau2 <- 20 # between-study variance
+# 
+# beta_m2 <- 0
+# beta_m3_levels <- c(0, 0.5, 1.8, 1.0, 1.2, 1.5, -0.5, -0.8, -1.0, -2)
+# 
+# beta_c1 <- -0.5
+# beta_c2 <- 0
+# beta_c3 <- 0.6
+# 
+# # ---- sampling SE function ----
+# se_fun <- function(n) {
+#   x <- rlnorm(n, meanlog = log(3), sdlog = 0.6)
+#   x[x > 16] <- 16
+#   x
+# }
+# 
+# # ---- simulation settings ----
+# m1_grid <- c(0.5, 1, 1.5, 2)
+# n_sims <- 400
+# 
+# # (If you prefer balanced 25 each, use instead:)
+# m1_by_run <- sample(rep(m1_grid, each = n_sims / length(m1_grid)))
+# 
+# # ---- results container ----
+# results <- data.frame(
+#   iter        = seq_len(n_sims), # counter
+#   beta_m1     = m1_by_run, # true m1 effect used
+#   pval_m1     = NA_real_ # fit$pval[2]
+# )
+# 
+# for (i in seq_len(n_sims)) {
+#   beta_m1 <- m1_by_run[i]
+# 
+#   # simulate moderators
+#   mods_study <- data.frame(
+#     study = 1:I,
+#     m1    = rbinom(I, 1, 0.5),
+#     m2    = rbinom(I, 1, 0.4),
+#     m3    = sample(1:10, I, replace = TRUE),
+#     c1    = rnorm(I, mean = 0, sd = 1),
+#     c2    = rnorm(I, mean = 10, sd = 2),
+#     c3    = rnorm(I, mean = 50, sd = 10)
+#   )
+#   mods_study$m3 <- factor(mods_study$m3, levels = 1:10)
+# 
+#   # sampling variances
+#   mods_study$sei <- se_fun(I)
+#   mods_study$vi <- mods_study$sei^2
+# 
+#   # true study effects
+#   m3_effect <- beta_m3_levels[as.integer(mods_study$m3)]
+# 
+#   theta <- mu +
+#     beta_m1 * mods_study$m1 +
+#     beta_m2 * mods_study$m2 +
+#     m3_effect +
+#     beta_c1 * mods_study$c1 +
+#     beta_c2 * mods_study$c2 +
+#     beta_c3 * mods_study$c3 +
+#     rnorm(I, mean = 0, sd = sqrt(tau2))
+# 
+#   # observed effects
+#   mods_study$yi <- theta + rnorm(I, mean = 0, sd = sqrt(mods_study$vi))
+# 
+#   # fit meta-regression and store p-value for m1
+#   fit <- tryCatch(
+#     rma(yi, vi,
+#       mods = ~ m1 + m2 + m3 + c1 + c2 + c3,
+#       data = mods_study,
+#       method = "REML"
+#     ),
+#     error = function(e) NULL
+#   )
+# 
+#   if (!is.null(fit)) {
+#     results$pval_m1[i] <- fit$pval[2]
+#   }
+# 
+#   # optional progress print
+#   message("Completed ", i, "/", n_sims)
+# }
+# 
+# results
+# 
+# alpha <- 0.05
+# 
+# power_mf <- results %>%
+#   dplyr::group_by(beta_m1) %>%
+#   summarise(
+#     n = sum(!is.na(pval_m1)),
+#     pct_below_0.05 = 100 * mean(pval_m1 < alpha, na.rm = TRUE)
+#   ) %>%
+#   arrange(beta_m1)
+# 
+# power_mf
+```
+# mixed effects metafor model
+```{r}
+# model types to modify runs
+# m1_only   = ~ m1,
+# m1_m2_c1  = ~ m1 + m2 + c1
+# full      = ~ m1 + m2 + m3 + c1 + c2 + c3
+
+set.seed(125)
+
+# ---- global parameters ----
+I <- 1000
+mu <- -2
+tau2 <- 20
+
+beta_m2 <- 0.2 # same journal
+beta_m3_levels <- c(0, 0.5, 1.8, 1.0, 1.2, 1.5, -0.5, -0.8, -1.0, -2) #subject field
+beta_m4_levels <- c(0,-0.8,0.3) #single publication vs many labs vs unpublished
+beta_c1 <- -0.5 # time between original and replic
+beta_c2 <- 1 #h-index
+beta_c3 <- 0.6 #snip
+
+se_fun <- function(n) {
+  x <- rlnorm(n, meanlog = log(3), sdlog = 0.6)
+  x[x > 16] <- 16
+  x
+}
+
+# ---- simulation settings ----
+m1_grid <- c(0.5, 1, 1.5, 2)
+n_sims <- 400
+m1_by_run <- sample(rep(m1_grid, each = n_sims / length(m1_grid)))
+
+results <- data.frame(
+  iter    = seq_len(n_sims),
+  beta_m1 = m1_by_run,
+  pval_m1 = NA_real_
+)
+
+J <- 4 # effects per study
+
+for (i in seq_len(n_sims)) {
+  beta_m1 <- m1_by_run[i]
+
+  # ---- study-level moderators ----
+  mods_study <- data.frame(
+    study = factor(seq_len(I)),
+    m1    = rbinom(I, 1, 0.5),
+    m2    = rbinom(I, 1, 0.4),
+    m3    = factor(sample(1:10, I, replace = TRUE), levels = 1:10),
+    c1    = rnorm(I, 0, 1),
+    c2    = rnorm(I, 10, 2),
+    c3    = rnorm(I, 50, 10)
+  )
+
+  # ---- expand to effect-level data (4 rows per study) ----
+  sim <- mods_study[rep(seq_len(I), each = J), ]
+  sim$effect <- factor(rep(seq_len(J), times = I))
+
+  k <- nrow(sim)
+
+  # sampling variances at effect level
+  sim$sei <- se_fun(k)
+  sim$vi <- sim$sei^2
+
+  # study random effects (shared across the 4 effects)
+  delta_i <- rnorm(I, 0, sqrt(tau2))
+  sim$delta_i <- rep(delta_i, each = J)
+
+  # m3 fixed effect contribution
+  sim$m3_effect <- beta_m3_levels[as.integer(sim$m3)]
+
+  # linear predictor excluding m1 (so we can vary beta_m1 easily)
+  base_lp <- mu +
+    sim$delta_i +
+    beta_m2 * sim$m2 +
+    sim$m3_effect +
+    beta_c1 * sim$c1 +
+    beta_c2 * sim$c2 +
+    beta_c3 * sim$c3
+
+  # observed effect sizes
+  sim$yi <- base_lp + beta_m1 * sim$m1 + rnorm(k, 0, sim$sei)
+
+  # ---- fit rma.mv with random intercept for study ----
+  fit <- tryCatch(
+    rma.mv(
+      yi = yi, V = vi,
+      mods = ~ m1 + m2 + m3 + c1 + c2 + c3,
+      random = ~ 1 | study,
+      data = sim,
+      method = "REML",
+      control = list(mfmaxit = 200, sigma2.init = tau2)
+    ),
+    error = function(e) NULL
+  )
+
+  if (!is.null(fit)) {
+    pvec <- fit$pval
+    names(pvec) <- rownames(fit$b)
+    results$pval_m1[i] <- unname(pvec["m1"])
+  }
+
+  message("Completed ", i, "/", n_sims)
+}
+
+results
+
+alpha <- 0.05
+
+power_mva <- results %>%
+  dplyr::group_by(beta_m1) %>%
+  summarise(
+    n = sum(!is.na(pval_m1)),
+    pct_below_0.05 = 100 * mean(pval_m1 < alpha, na.rm = TRUE)
+  ) %>%
+  arrange(beta_m1)
+
+power_mva
+```
+```{r}
+# model types to modify runs
+# m1_only   = ~ m1,
+# m1_m2_c1  = ~ m1 + m2 + c1
+# full      = ~ m1 + m2 + m3 + m4 + c1 + c2 + c3 + yrs_rep + yrs_rep2
+
+set.seed(125)
+
+# ---- global parameters ----
+I <- 1000
+mu <- -2
+tau2 <- 20
+
+beta_m2 <- 0.2 # same journal
+beta_m3_levels <- c(0, 0.5, 1.8, 1.0, 1.2, 1.5, -0.5, -0.8, -1.0, -2) #subject field
+beta_m4_levels <- c(0, -0.8, 0.3) #single publication vs many labs vs unpublished
+
+beta_c1 <- -0.5 # time between original and replic
+beta_c2 <- 1    # h-index
+beta_c3 <- 0.6  # snip
+
+# NEW: effect-level "years since replication" moderators (data-generating effects)
+beta_yrs_rep  <- -0.15  # +0.15 per year (requested)
+beta_yrs_rep2 <- -0.01  # set to whatever you want for the quadratic; keep 0 if you only want linear
+
+se_fun <- function(n) {
+  x <- rlnorm(n, meanlog = log(3), sdlog = 0.6)
+  x[x > 16] <- 16
+  x
+}
+
+# ---- simulation settings ----
+m1_grid <- c(0.5, 1, 1.5, 2)
+n_sims <- 2
+m1_by_run <- sample(m1_grid, size = n_sims, replace = TRUE)
+
+results <- data.frame(
+  iter    = seq_len(n_sims),
+  beta_m1 = m1_by_run,
+  pval_m1 = NA_real_
+)
+
+J <- 4 # effects per study
+
+for (i in seq_len(n_sims)) {
+  beta_m1 <- m1_by_run[i]
+
+  # ---- study-level moderators ----
+  mods_study <- data.frame(
+    study = factor(seq_len(I)),
+    m1    = rbinom(I, 1, 0.5),
+    m2    = rbinom(I, 1, 0.4),
+    m3    = factor(sample(1:10, I, replace = TRUE), levels = 1:10),
+    m4    = factor(sample(1:3,  I, replace = TRUE), levels = 1:3),   # NEW
+    c1    = rnorm(I, 0, 1),
+    c2    = rnorm(I, 10, 2),
+    c3    = rnorm(I, 50, 10)
+  )
+
+  # ---- expand to effect-level data (J rows per study) ----
+  sim <- mods_study[rep(seq_len(I), each = J), ]
+
+  # effect order within study (kept as factor if you still want it)
+  sim$effect <- factor(rep(seq_len(J), times = I), levels = seq_len(J))
+
+  # NEW: years since replication as numeric 0,1,2,3 within each study
+  sim$yrs_rep  <- rep(0:(J - 1), times = I)
+  sim$yrs_rep2 <- sim$yrs_rep^2
+
+  k <- nrow(sim)
+
+  # sampling variances at effect level
+  sim$sei <- se_fun(k)
+  sim$vi <- sim$sei^2
+
+  # study random effects (shared across the J effects)
+  delta_i <- rnorm(I, 0, sqrt(tau2))
+  sim$delta_i <- rep(delta_i, each = J)
+
+  # m3/m4 fixed effect contributions (data-generating)
+  sim$m3_effect <- beta_m3_levels[as.integer(sim$m3)]
+  sim$m4_effect <- beta_m4_levels[as.integer(sim$m4)]  # NEW
+
+  # linear predictor excluding m1 (so we can vary beta_m1 easily)
+  base_lp <- mu +
+    sim$delta_i +
+    beta_m2 * sim$m2 +
+    sim$m3_effect +
+    sim$m4_effect +                         # NEW
+    beta_c1 * sim$c1 +
+    beta_c2 * sim$c2 +
+    beta_c3 * sim$c3 +
+    beta_yrs_rep  * sim$yrs_rep +           # NEW
+    beta_yrs_rep2 * sim$yrs_rep2            # NEW
+
+  # observed effect sizes
+  sim$yi <- base_lp + beta_m1 * sim$m1 + rnorm(k, 0, sim$sei)
+  
+  print(round(cor(sim[, c("m1","m2","c1","c2","c3","yrs_rep","yrs_rep2")]), 3))
+
+  X <- model.matrix(~ m1 + m2 + m3 + m4 + c1 + c2 + c3 + yrs_rep + yrs_rep2, data = sim)
+  print(round(cor(X[, -1]), 3))
+
+  # ---- fit rma.mv with random intercept for study ----
+  fit <- tryCatch(
+    rma.mv(
+      yi = yi, V = vi,
+      mods = ~ m1 + m2 + m3 + m4 + c1 + c2 + c3 + yrs_rep + yrs_rep2, # UPDATED
+      random = ~ 1 | study,
+      data = sim,
+      method = "REML",
+      control = list(mfmaxit = 200, sigma2.init = tau2)
+    ),
+    error = function(e) NULL
+  )
+
+  if (!is.null(fit)) {
+    pvec <- fit$pval
+    names(pvec) <- rownames(fit$b)
+    results$pval_m1[i] <- unname(pvec["m1"])
+  }
+
+  message("Completed ", i, "/", n_sims)
+}
+
+results
+
+alpha <- 0.05
+
+power_mva <- results %>%
+  dplyr::group_by(beta_m1) %>%
+  dplyr::summarise(
+    n = sum(!is.na(pval_m1)),
+    pct_below_0.05 = 100 * mean(pval_m1 < alpha, na.rm = TRUE)
+  ) %>%
+  dplyr::arrange(beta_m1)
+
+power_mva
+
+
+
+```
+
+#parallel script
+```{r}
+### --- GLOBAL PARAMETERS  --------------------
+#
+# I   <- 1000        # number of studies
+# mu  <- -2         # true average ATT
+# tau2 <- 20        # between-study variance
+#
+# # Other true moderator effects (fixed; m1 will vary)
+# beta_m2 <-  0                # binary m2 (null)
+# beta_m3_levels <- c(0,       # m3 level 1 (reference)
+#                     0.5, 1.8, 1.0, 1.2, 1.5,
+#                    -0.5,-0.8,-1.0,-2)  # levels 2–10
+#
+# beta_c1 <- -0.5              # continuous c1
+# beta_c2 <-  0                # continuous c2 (null)
+# beta_c3 <-  0.6              # continuous c3
+#
+# ### --- SAMPLING VARIANCES ----------------------------------------------
+# se_fun <- function(n) {
+#   x <- rlnorm(n, meanlog = log(3), sdlog = 0.6)
+#   x[x > 16] <- 16
+#   x
+# }
+#
+# n_sim <- 1   # number of simulation runs per scenario
+#
+# # Grid of effect sizes for m1 we want to try
+# beta_m1_grid <- c(1,2)
+#
+# # Models to compare
+# model_list <- list(
+#   m1_only   = ~ m1,                            # 1) m1 only
+#   m1_m2_c1  = ~ m1 + m2 + c1,                  # 2) m1 + m2 + c1
+#   full      = ~ m1 + m2 + m3 + c1 + c2 + c3    # 3) full model
+# )
+#
+# # 3D array to store ALL p-values for m1:
+# # dimensions: [beta_m1 value, model, simulation]
+# pvals_m1 <- array(
+#   NA_real_,
+#   dim = c(length(beta_m1_grid), length(model_list), n_sim),
+#   dimnames = list(
+#     beta_m1 = paste0("b", beta_m1_grid),
+#     model   = names(model_list),
+#     sim     = as.character(1:n_sim)
+#   )
+# )
+#
+# # --- helper: one simulation replicate (returns matrix [beta, model]) ---
+# one_sim <- one_sim_fast <- function(s, I, mu, tau2, beta_m1_grid, model_list,
+#                          beta_m2, beta_m3_levels, beta_c1, beta_c2, beta_c3, se_fun) {
+#
+#   effects_per_study <- sample.int(5, I, replace = TRUE)  # 1:5
+#
+#   study  <- rep.int(seq_len(I), times = effects_per_study)
+#   effect <- sequence(effects_per_study)
+#   sim <- data.frame(study = study, effect = effect)
+#
+#   # study-level moderators
+#   mods <- data.frame(
+#     m1 = rbinom(I, 1, 0.5),
+#     m2 = rbinom(I, 1, 0.4),
+#     m3 = sample.int(10, I, replace = TRUE),
+#     c1 = rnorm(I, 0, 1),
+#     c2 = rnorm(I, 10, 2),
+#     c3 = rnorm(I, 50, 10)
+#   )
+#
+#   # map to effect rows by indexing
+#   sim$m1 <- mods$m1[sim$study]
+#   sim$m2 <- mods$m2[sim$study]
+#   sim$c1 <- mods$c1[sim$study]
+#   sim$c2 <- mods$c2[sim$study]
+#   sim$c3 <- mods$c3[sim$study]
+#
+#   # m3 at study-level, then map
+#   m3_fac_study <- factor(mods$m3, levels = 1:10, labels = paste0("L", 1:10))
+#   m3_eff_study <- beta_m3_levels[mods$m3]
+#   sim$m3        <- m3_fac_study[sim$study]
+#   sim$m3_effect <- m3_eff_study[sim$study]
+#
+#   # random study effects mapped
+#   delta_i <- rnorm(I, 0, sqrt(tau2))
+#   sim$delta_i <- delta_i[sim$study]
+#
+#   # sampling variance and eps once
+#   k <- nrow(sim)
+#   sim$sei <- se_fun(k)
+#   sim$vi  <- sim$sei^2
+#   eps <- rnorm(k, 0, sim$sei)
+#
+#   base_lp <- mu +
+#     sim$delta_i +
+#     beta_m2 * sim$m2 +
+#     sim$m3_effect +
+#     beta_c1 * sim$c1 +
+#     beta_c2 * sim$c2 +
+#     beta_c3 * sim$c3
+#
+#   # precompute design matrices once per replicate (big win with factor m3)
+#   X_list <- lapply(model_list, model.matrix, data = sim)
+#
+#   out <- matrix(NA_real_, nrow = length(beta_m1_grid), ncol = length(model_list),
+#                 dimnames = list(paste0("b", beta_m1_grid), names(model_list)))
+#
+#   for (b in seq_along(beta_m1_grid)) {
+#     beta_m1_cur <- beta_m1_grid[b]
+#     yi <- base_lp + beta_m1_cur * sim$m1 + eps
+#
+#     for (m in seq_along(model_list)) {
+#       fit <- try(
+#         metafor::rma.mv(yi = yi, V = sim$vi, mods = X_list[[m]],intercept = FALSE,
+#                         random = ~ 1 | study, data = sim),
+#         silent = TRUE
+#       )
+#       if (inherits(fit, "try-error")) next
+#
+#       nm <- rownames(fit$b)
+#       p  <- fit$pval
+#       names(p) <- nm
+#       if ("m1" %in% names(p)) out[b, m] <- p["m1"]
+#     }
+#   }
+#
+#   out
+# }
+#
+#
+# # --- parallel runner ---
+# run_power_parallel <- function(n_sim, workers = NULL) {
+#   if (is.null(workers)) workers <- max(1L, future::availableCores() - 2L)
+#
+#   old_plan <- future::plan()
+#   on.exit(future::plan(old_plan), add = TRUE)
+#   future::plan(future::multisession, workers = workers)
+#
+#   progressr::handlers(progressr::handler_rstudio())
+#
+#   progressr::with_progress({
+#     p <- progressr::progressor(along = 1:n_sim)
+#
+#     mats <- furrr::future_map(
+#       1:n_sim,
+#       function(s) {
+#         p(sprintf("sim %d / %d", s, n_sim))
+#         one_sim(
+#           s = s,
+#           I = I, mu = mu, tau2 = tau2,
+#           beta_m1_grid = beta_m1_grid,
+#           model_list = model_list,
+#           beta_m2 = beta_m2, beta_m3_levels = beta_m3_levels,
+#           beta_c1 = beta_c1, beta_c2 = beta_c2, beta_c3 = beta_c3,
+#           se_fun = se_fun
+#         )
+#       },
+#       .options = furrr::furrr_options(seed = TRUE)
+#     )
+#
+#     # stack into array [beta, model, sim]
+#     simplify2array(mats)
+#   })
+# }
+# progressr::handlers(progressr::handler_rstudio())
+#
+# # run it
+# pvals_m1 <- run_power_parallel(n_sim)
+#
+# # power
+# power_mat <- apply(pvals_m1, c(1, 2), \(v) mean(v < 0.05, na.rm = TRUE))
+# power_mat
+```

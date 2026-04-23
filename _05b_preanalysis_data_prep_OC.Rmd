@@ -1,0 +1,157 @@
+---
+title: "_05_preanalysis_data_prep"
+author: "Josefina Weinerova"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, tidyverse, httr, jsonlite,
+  purrr, dplyr, tibble, data.table
+)
+
+source("R/analysis_prep_helpers.R")
+```
+
+#load data
+```{r}
+citations_controlGroup <- readRDS("data/citations_OC.rds")
+full_matched_df <- readRDS("data/full_matched_df.rds")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+citations_rep <- readRDS("data/citations_OC_rep.rds")
+```
+
+# get number of citations per year
+```{r}
+control_cit_per_year <- citations_controlGroup %>%
+  dplyr::group_by(doi_queried, year) %>%
+  dplyr::summarise(n_citations = n(), .groups = "drop")
+control_cit_per_year <- control_cit_per_year %>%
+  filter(!is.na(year))
+analysis_df <- control_cit_per_year
+
+null_doi <- setdiff(full_matched_df$doi, analysis_df$doi_queried)
+null_doi <- null_doi[!is.na(null_doi) & null_doi != "NA" & null_doi != ""]
+null_doi <- unique(null_doi)
+```
+
+#do missing dois have 0 citations
+```{r}
+email = Sys.getenv("MY_EMAIL")
+options(openalexR.mailto = email)
+batches <- split(null_doi, ceiling(seq_along(null_doi) / 50))
+
+safe_fetch <- purrr::safely(function(d) {
+  oa_fetch(
+    entity = "works",
+    doi = d,
+    options = list(select = c("doi", "cited_by_count", "counts_by_year")),
+    output = "tibble",
+    mailto = email,
+    verbose = TRUE
+  )
+})
+
+res <- purrr::imap(batches, \(d, i) {
+  Sys.sleep(0.2)
+  out <- safe_fetch(d)
+  list(
+    batch = i,
+    n_dois = length(d),
+    data = out$result %||% tibble(),
+    error = if (!is.null(out$error)) conditionMessage(out$error) else NA_character_
+  )
+})
+
+null_cit <- purrr::map_dfr(res, "data")
+errors <- dplyr::bind_rows(purrr::map(res, \(x) tibble(batch = x$batch, n_dois = x$n_dois, error = x$error))) %>%
+  dplyr::filter(!is.na(error))
+
+true_null <- null_cit %>% filter(cited_by_count == 0)
+true_null <- true_null %>%
+  mutate(
+    doi = doi %>%
+      as.character() %>%
+      str_trim() %>%
+      str_replace("^https?://(dx\\.)?doi\\.org/", "") %>%
+      str_replace("^doi:\\s*", "") %>%
+      tolower()
+  )
+
+matched_years <- full_matched_df %>%
+  transmute(doi, publication_year) %>%
+  distinct(doi, .keep_all = TRUE)
+
+true_null <- true_null %>%
+  left_join(matched_years, by = "doi")
+
+true_null <- true_null %>%
+  mutate(publication_year = as.integer(publication_year)) %>%
+  rowwise() %>%
+  mutate(
+    year = list(
+      if (is.na(publication_year)) {
+        NA_integer_
+      } else if (publication_year <= 2025L) {
+        seq.int(publication_year, 2025L)
+      } else {
+        publication_year
+      }
+    )
+  ) %>%
+  ungroup() %>%
+  tidyr::unnest(year)
+true_null <- true_null %>%
+  mutate(n_citations = cited_by_count, doi_queried = doi) %>%
+  dplyr::select(doi_queried, n_citations, year)
+analysis_df <- bind_rows(analysis_df, true_null)
+```
+
+#metadata for replications - year of publication
+- some replication studies do not have doi, and therefore cannot get metadata through API, the year will be filled manually from web search for those
+
+# pre-analysis modification
+
+```{r}
+replic_year <- df_meta %>% dplyr::select(doi_o, doi_r, publication_year_r)
+orig_year <- full_matched_df %>% dplyr::select(doi, publication_year, issn_l)
+
+analysis_df <- prep_analysis_df(analysis_df, replic_year, orig_year)
+saveRDS(analysis_df, "data/analysis_df.rds")
+```
+
+# add years with 0 for years that are later than publication but have no data
+
+```{r}
+analysis_padded <- pad_panel(analysis_df)
+```
+
+## Citations without co-citation
+```{r}
+citations_rep <- citations_rep %>% rename(doi_queried_r = doi_queried)
+citations_rep <- citations_rep %>%
+  left_join(
+    replic_year,
+    by = c("doi_queried_r" = "doi_r"),
+    relationship = "many-to-many"
+  )
+
+analysis_padded <- add_nococit(
+  citations_raw = citations_controlGroup,
+  citations_rep = citations_rep,
+  citing_id_col = "citing",
+  analysis_padded = analysis_padded
+)
+```
+
+#save the cleaned dataset
+```{r}
+saveRDS(analysis_padded, "data/analysis_pad.rds")
+```

@@ -1,0 +1,112 @@
+---
+title: "_04_citing_studies"
+author: "Josefina Weinerova"
+date: "2025-10-05"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  tidyverse, httr, jsonlite,
+  purrr, dplyr, tibble, data.table,
+  stringr
+)
+
+source("R/oc_helpers.R")
+```
+
+# Data loading
+
+```{r load-data}
+full_matched_df <- readRDS("data/full_matched_df.rds")
+df_meta         <- readRDS("data/metadata_OpenAlex.rds")
+```
+
+# Switch citation type
+
+```{r switch}
+# Choose citation type: "original" or "rep"
+citation_type <- "rep"
+
+cfg <- switch(
+  citation_type,
+
+  "original" = list(
+    dois           = unique(full_matched_df$doi),
+    outfile        = "citations_ControlGroup.csv",
+    checkpoint_rds = "checkpoint_control.rds",
+    failed_log     = "failed_dois_control.txt",
+    extra_csv      = "citations_ControlGroup_2.csv",   # set to NULL if no extra file
+    out_rds        = "data/citations_OC.rds"
+  ),
+
+  "rep" = list(
+    dois           = unique(df_meta$doi_r),
+    outfile        = "citations_RepGroup.csv",
+    checkpoint_rds = "checkpoint_rep.rds",
+    failed_log     = "failed_dois_rep.txt",
+    extra_csv      = NULL,
+    out_rds        = "data/citations_OC_rep.rds"
+  ),
+
+  stop("Invalid citation_type. Choose 'original' or 'rep'.")
+)
+
+# Clean DOIs
+dois <- cfg$dois |>
+  trimws() |>
+  (\(x) unique(x[!is.na(x) & nzchar(x)]))()
+
+message("Citation type: ", citation_type)
+message("Unique DOIs to query: ", length(dois))
+```
+
+# Run OpenCitations citing pipeline
+
+```{r run-pipeline}
+access_token <- Sys.getenv("OC_API_KEY")
+
+run_oc_citing_pipeline(
+  dois           = dois,
+  access_token   = access_token,
+  outfile        = cfg$outfile,
+  checkpoint_rds = cfg$checkpoint_rds,
+  failed_log     = cfg$failed_log
+)
+```
+
+# Clean up
+
+```{r clean-up}
+citations <- read_csv(cfg$outfile)
+
+# Append extra CSV if present (e.g. citations_ControlGroup_2.csv)
+if (!is.null(cfg$extra_csv) && file.exists(cfg$extra_csv)) {
+  citations_extra <- read_csv(cfg$extra_csv)
+  citations <- rbind(citations, citations_extra)
+  message("Appended extra file: ", cfg$extra_csv)
+}
+
+citations$year <- substr(citations$creation, 1, 4)
+
+citations <- citations |>
+  filter(year <= 2025) |>
+  distinct(cited, citing, .keep_all = TRUE)
+
+message("Final rows: ", nrow(citations))
+message("Unique cited DOIs: ", length(unique(citations$cited)))
+```
+
+# Save
+
+```{r save}
+saveRDS(citations, cfg$out_rds)
+message("Saved to: ", cfg$out_rds)
+```

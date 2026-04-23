@@ -1,0 +1,42 @@
+{
+  "cluster_id": "economics_business",
+  "cluster_label": "Economics & Business",
+  "version": "economics-fields-v1.0",
+  "fields": [
+    {
+      "id": "economics_general",
+      "label": "Economics (General)",
+      "description": "Microeconomics, macroeconomics, econometrics, economic theory, labour, public, international, development economics",
+      "exclusions": ["Firm-level management → Business Administration", "Individual decision-making focus → Behavioural/Experimental Economics"]
+    },
+    {
+      "id": "behavioural_experimental_economics",
+      "label": "Behavioural/Experimental Economics",
+      "description": "Economic decision-making with experimental methods. Must have explicit economic framing: utility, incentives, markets, auctions, game theory",
+      "exclusions": ["General JDM without economic framing → Psychology (Cognitive)", "Consumer behaviour without theory → Marketing"]
+    },
+    {
+      "id": "business_administration",
+      "label": "Business Administration",
+      "description": "Management, strategy, operations, supply chain, accounting, finance, entrepreneurship, innovation",
+      "exclusions": ["Marketing/consumer research → Marketing", "Organisational behaviour theory → Psychology"]
+    },
+    {
+      "id": "marketing",
+      "label": "Marketing",
+      "description": "Marketing strategy, consumer behaviour, branding, advertising, market research, sales, pricing",
+      "exclusions": "Social-psychological theory in psychology venues → Social Psychology"
+    },
+    {
+      "id": "business_informatics",
+      "label": "Business Informatics",
+      "description": "Information systems, enterprise systems, digital transformation, IT management",
+      "exclusions": ["Pure computer science → Computer Science", "Business AI without IS focus → Computer Science/Business Admin"]
+    },
+    {
+      "id": "public_finance",
+      "label": "Public Finance",
+      "description": "Government budgets, taxation, public expenditure, fiscal policy"
+    }
+  ]
+}

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Field Classification — Manual Coding</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: #f5f5f5; color: #222; }
+  .top-bar { background: #1a1a2e; color: #fff; padding: 10px 24px;
+             display: flex; justify-content: space-between; align-items: center; }
+  .top-bar h1 { font-size: 16px; font-weight: 600; }
+  .progress { font-size: 14px; opacity: .85; }
+  .container { display: flex; height: calc(100vh - 44px); }
+  .article-panel { flex: 1; padding: 24px; overflow-y: auto; border-right: 1px solid #ddd; background: #fff; }
+  .coding-panel { width: 420px; display: flex; flex-direction: column; background: #fafafa; }
+  .article-panel h2 { font-size: 15px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .article-title { font-size: 20px; font-weight: 600; margin-bottom: 12px; line-height: 1.35; }
+  .article-journal { font-size: 14px; color: #0066cc; margin-bottom: 16px; font-weight: 500; }
+  .article-abstract { font-size: 14px; line-height: 1.65; color: #333; }
+  .article-doi { font-size: 12px; color: #999; margin-top: 16px; }
+  .search-box { padding: 12px 16px; border-bottom: 1px solid #ddd; }
+  .search-box input { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px;
+                       font-size: 14px; outline: none; }
+  .search-box input:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,.15); }
+  .cluster-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .cluster-item { padding: 8px 16px; cursor: pointer; display: flex; align-items: baseline;
+                   border-bottom: 1px solid #eee; font-size: 13px; transition: background .1s; }
+  .cluster-item:hover { background: #e8f0fe; }
+  .cluster-item.selected { background: #c8e6c9; font-weight: 600; }
+  .cluster-num { display: inline-block; min-width: 28px; color: #0066cc; font-weight: 700;
+                  font-size: 12px; flex-shrink: 0; }
+  .cluster-label { flex: 1; }
+  .cluster-count { font-size: 11px; color: #999; margin-left: 8px; }
+  .coding-footer { padding: 12px 16px; border-top: 1px solid #ddd; display: flex; gap: 8px; flex-wrap: wrap; }
+  .coding-footer button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 6px;
+                           background: #fff; cursor: pointer; font-size: 13px; }
+  .coding-footer button:hover { background: #eee; }
+  .coding-footer button.primary { background: #0066cc; color: #fff; border-color: #0066cc; }
+  .coding-footer button.primary:hover { background: #0052a3; }
+  .hint { font-size: 11px; color: #888; padding: 6px 16px; border-bottom: 1px solid #eee; }
+  .upload-screen { display: flex; flex-direction: column; align-items: center; justify-content: center;
+                    height: 100vh; gap: 16px; }
+  .upload-screen h1 { font-size: 24px; }
+  .upload-screen p { color: #666; font-size: 14px; max-width: 500px; text-align: center; }
+  .upload-screen label { padding: 12px 24px; background: #0066cc; color: #fff; border-radius: 8px;
+                          cursor: pointer; font-size: 15px; font-weight: 500; }
+  .upload-screen input[type=file] { display: none; }
+  .nav-hint { font-size: 12px; color: #888; margin-top: 8px; }
+  .number-input { display: flex; gap: 8px; align-items: center; padding: 0 16px 8px; }
+  .number-input input { width: 60px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px;
+                         font-size: 14px; text-align: center; }
+  .number-input span { font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+
+<div id="upload-screen" class="upload-screen">
+  <h1>Article Field Classification</h1>
+  <p>Load a CSV file with columns: <code>doi</code>, <code>title</code>, <code>abstract</code>, <code>source_display_name</code></p>
+  <label>Choose CSV file <input type="file" id="file-input" accept=".csv"></label>
+  <p class="nav-hint">Progress is saved in your browser automatically.</p>
+</div>
+
+<div id="app" style="display:none">
+  <div class="top-bar">
+    <h1>Article Field Classification</h1>
+    <div class="progress" id="progress-text"></div>
+  </div>
+  <div class="container">
+    <div class="article-panel" id="article-panel"></div>
+    <div class="coding-panel">
+      <div class="hint">Type a number and press Enter, or search and click. Arrow keys to navigate, Enter to select.</div>
+      <div class="number-input">
+        <span>Go to #</span>
+        <input type="number" id="num-input" min="1" placeholder="#">
+        <span>then Enter</span>
+      </div>
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search clusters..." autofocus>
+      </div>
+      <div class="cluster-list" id="cluster-list"></div>
+      <div class="coding-footer">
+        <button onclick="prevArticle()">← Prev</button>
+        <button onclick="skipArticle()">Skip →</button>
+        <button onclick="undoCoding()">Undo last</button>
+        <button class="primary" onclick="downloadResults()">Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Cluster schema (embedded) ---
+const CLUSTERS = [
+  {id:"psychology", label:"Psychology"},
+  {id:"economics_business", label:"Economics & Business"},
+  {id:"education", label:"Education"},
+  {id:"sociology_social_sciences", label:"Sociology & Social Sciences"},
+  {id:"political_science", label:"Political Science"},
+  {id:"media_communication_studies", label:"Media & Communication Studies"},
+  {id:"philosophy", label:"Philosophy"},
+  {id:"law", label:"Law"},
+  {id:"computer_science", label:"Computer Science"},
+  {id:"human_medicine", label:"Human Medicine"},
+  {id:"biology", label:"Biology"},
+  {id:"statistics", label:"Statistics"},
+  {id:"mathematics", label:"Mathematics"},
+  {id:"health_sciences_general", label:"Health Sciences (General)"},
+  {id:"sport_sciences", label:"Sport Sciences"},
+  {id:"science_studies", label:"Science Studies / Theory of Science"},
+  {id:"public_administration", label:"Public Administration"},
+  {id:"social_work_services", label:"Social Work & Social Services"},
+  {id:"history", label:"History"},
+  {id:"religious_studies_theology", label:"Religious Studies & Theology"},
+  {id:"general_comparative_literature_linguistics", label:"General & Comparative Literature and Linguistics"},
+  {id:"classical_philology", label:"Classical Philology"},
+  {id:"german_studies", label:"German Studies"},
+  {id:"english_american_studies", label:"English & American Studies"},
+  {id:"romance_studies", label:"Romance Studies"},
+  {id:"slavonic_baltic_finno_ugrian", label:"Slavonic, Baltic & Finno-Ugrian Studies"},
+  {id:"other_linguistics_cultural_studies", label:"Other Linguistics & Cultural Studies"},
+  {id:"cultural_studies", label:"Cultural Studies"},
+  {id:"regional_studies", label:"Regional Studies"},
+  {id:"fine_arts", label:"Fine Arts"},
+  {id:"design", label:"Design"},
+  {id:"performing_arts_film_theatre", label:"Performing Arts, Film & Theatre"},
+  {id:"music_musicology", label:"Music & Musicology"},
+  {id:"art_art_theory", label:"Art & Art Theory"},
+  {id:"physics_astronomy", label:"Physics & Astronomy"},
+  {id:"chemistry", label:"Chemistry"},
+  {id:"pharmacy", label:"Pharmacy"},
+  {id:"earth_sciences", label:"Earth Sciences"},
+  {id:"geography", label:"Geography"},
+  {id:"dentistry", label:"Dentistry"},
+  {id:"veterinary_medicine", label:"Veterinary Medicine"},
+  {id:"landscape_management", label:"Landscape Management & Environmental Architecture"},
+  {id:"agriculture", label:"Agriculture"},
+  {id:"forestry_wood_management", label:"Forestry & Wood Management"},
+  {id:"nutritional_domestic_science", label:"Nutritional & Domestic Science"},
+  {id:"industrial_engineering", label:"Industrial Engineering"},
+  {id:"mining_metallurgy", label:"Mining & Metallurgy"},
+  {id:"mechanical_process_engineering", label:"Mechanical & Process Engineering"},
+  {id:"electrical_computer_information_engineering", label:"Electrical, Computer & Information Engineering"},
+  {id:"transport_engineering_nautical", label:"Transport Engineering & Nautical Science"},
+  {id:"architecture", label:"Architecture"},
+  {id:"spatial_planning", label:"Spatial Planning"},
+  {id:"civil_engineering", label:"Civil Engineering"},
+  {id:"surveying_geoinformation", label:"Surveying & Geoinformation"},
+  {id:"materials_science_engineering", label:"Materials Science & Materials Engineering"},
+  {id:"engineering_general", label:"Engineering (General & Interdisciplinary)"},
+];
+
+let articles = [];
+let codings = {};  // doi -> cluster_id
+let currentIdx = 0;
+let highlightIdx = -1;
+let filteredClusters = [...CLUSTERS];
+let storageKey = '';
+
+// --- CSV parsing ---
+function parseCSV(text) {
+  const lines = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i+1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if ((ch === ',' || ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === ',') { lines.push(current); current = ''; }
+      else if (ch === '\n') { lines.push(current); current = ''; lines.push('\n'); }
+      // skip \r
+    } else { current += ch; }
+  }
+  if (current) lines.push(current);
+
+  // Split into rows
+  const rows = [[]];
+  for (const token of lines) {
+    if (token === '\n') { rows.push([]); }
+    else { rows[rows.length-1].push(token.trim()); }
+  }
+  const header = rows[0];
+  return rows.slice(1).filter(r => r.length >= header.length && r.some(c => c)).map(r => {
+    const obj = {};
+    header.forEach((h, i) => obj[h] = r[i] || '');
+    return obj;
+  });
+}
+
+// --- File upload ---
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  storageKey = 'manual_coding_' + file.name;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    articles = parseCSV(ev.target.result);
+    // Load saved progress
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try { codings = JSON.parse(saved); } catch(e) { codings = {}; }
+    }
+    // Jump to first uncoded
+    currentIdx = articles.findIndex(a => !codings[a.doi]);
+    if (currentIdx < 0) currentIdx = 0;
+    document.getElementById('upload-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    renderArticle();
+    renderClusters();
+  };
+  reader.readAsText(file);
+});
+
+// --- Rendering ---
+function renderArticle() {
+  const a = articles[currentIdx];
+  if (!a) return;
+  const coded = codings[a.doi];
+  const codedLabel = coded ? CLUSTERS.find(c => c.id === coded)?.label || coded : '';
+  document.getElementById('article-panel').innerHTML = `
+    <h2>Article ${currentIdx + 1} of ${articles.length}</h2>
+    <div class="article-journal">${esc(a.source_display_name || 'Unknown journal')}</div>
+    <div class="article-title">${esc(a.title || 'No title')}</div>
+    <div class="article-abstract">${esc(a.abstract || 'No abstract available')}</div>
+    <div class="article-doi">DOI: ${esc(a.doi || '')}${coded ? ' — Coded: <strong>' + esc(codedLabel) + '</strong>' : ''}</div>
+  `;
+  updateProgress();
+  // Reset search and highlight
+  document.getElementById('search-input').value = '';
+  document.getElementById('num-input').value = '';
+  highlightIdx = -1;
+  filterClusters('');
+}
+
+function renderClusters(filter) {
+  const list = document.getElementById('cluster-list');
+  list.innerHTML = filteredClusters.map((c, i) => {
+    const selected = codings[articles[currentIdx]?.doi] === c.id ? ' selected' : '';
+    const highlighted = i === highlightIdx ? ' style="background:#d0e0ff"' : '';
+    return `<div class="cluster-item${selected}"${highlighted} onclick="selectCluster('${c.id}')" data-idx="${i}">
+      <span class="cluster-num">${i + 1}</span>
+      <span class="cluster-label">${esc(c.label)}</span>
+    </div>`;
+  }).join('');
+}
+
+function updateProgress() {
+  const coded = Object.keys(codings).length;
+  document.getElementById('progress-text').textContent =
+    `${coded} / ${articles.length} coded`;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// --- Actions ---
+function selectCluster(clusterId) {
+  const a = articles[currentIdx];
+  if (!a) return;
+  codings[a.doi] = clusterId;
+  save();
+  // Auto-advance to next uncoded
+  const nextUncoded = articles.findIndex((a, i) => i > currentIdx && !codings[a.doi]);
+  if (nextUncoded >= 0) {
+    currentIdx = nextUncoded;
+  } else if (currentIdx < articles.length - 1) {
+    currentIdx++;
+  }
+  renderArticle();
+}
+
+function prevArticle() {
+  if (currentIdx > 0) { currentIdx--; renderArticle(); }
+}
+
+function skipArticle() {
+  if (currentIdx < articles.length - 1) { currentIdx++; renderArticle(); }
+}
+
+function undoCoding() {
+  // Find last coded article before current
+  for (let i = currentIdx; i >= 0; i--) {
+    if (codings[articles[i]?.doi]) {
+      delete codings[articles[i].doi];
+      currentIdx = i;
+      save();
+      renderArticle();
+      return;
+    }
+  }
+}
+
+function save() {
+  localStorage.setItem(storageKey, JSON.stringify(codings));
+}
+
+function downloadResults() {
+  let csv = 'doi,cluster_id\n';
+  for (const a of articles) {
+    const coding = codings[a.doi] || '';
+    csv += `"${a.doi}","${coding}"\n`;
+  }
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'manual_classification.csv';
+  link.click();
+}
+
+// --- Search and keyboard navigation ---
+function filterClusters(query) {
+  const q = query.toLowerCase();
+  filteredClusters = q ? CLUSTERS.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q)) : [...CLUSTERS];
+  highlightIdx = filteredClusters.length > 0 ? 0 : -1;
+  renderClusters();
+}
+
+document.getElementById('search-input').addEventListener('input', function(e) {
+  filterClusters(e.target.value);
+});
+
+document.getElementById('num-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    const num = parseInt(this.value);
+    if (num >= 1 && num <= filteredClusters.length) {
+      selectCluster(filteredClusters[num - 1].id);
+    }
+    this.value = '';
+    e.preventDefault();
+  }
+});
+
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (highlightIdx < filteredClusters.length - 1) { highlightIdx++; renderClusters(); scrollToHighlight(); }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (highlightIdx > 0) { highlightIdx--; renderClusters(); scrollToHighlight(); }
+  } else if (e.key === 'Enter' && highlightIdx >= 0 && highlightIdx < filteredClusters.length) {
+    e.preventDefault();
+    selectCluster(filteredClusters[highlightIdx].id);
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  // Don't capture when typing in inputs
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') { prevArticle(); }
+  else if (e.key === 'ArrowRight') { skipArticle(); }
+});
+
+function scrollToHighlight() {
+  const list = document.getElementById('cluster-list');
+  const items = list.querySelectorAll('.cluster-item');
+  if (items[highlightIdx]) { items[highlightIdx].scrollIntoView({block: 'nearest'}); }
+}
+</script>
+</body>
+</html>

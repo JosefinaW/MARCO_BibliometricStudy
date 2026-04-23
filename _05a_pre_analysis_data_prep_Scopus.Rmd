@@ -1,0 +1,133 @@
+---
+title: "_05a_pre_analysis_data_prep"
+author: "Josefina Weinerova"
+date: "2026-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# package loading
+```{r}
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  tidyverse, httr, jsonlite,
+  purrr, dplyr, tibble, data.table,
+  stringr, rscopus
+)
+
+source("R/analysis_prep_helpers.R")
+```
+
+#load data
+```{r}
+citations_controlGroup_Scopus <- readRDS("data/citing_studies_scopus.rds")
+full_matched_df <- readRDS("data/full_matched_df.rds")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+citing_studies_Scopus_rep <- readRDS("data/citing_studies_scopus_rep.rds")
+```
+
+#get year column from full date
+```{r}
+citations_controlGroup_Scopus <- citations_controlGroup_Scopus %>%
+  mutate(year = as.integer(substr(citing_date, 1, 4)))
+```
+
+# get number of citations per year
+```{r}
+control_cit_per_year <- citations_controlGroup_Scopus %>%
+  dplyr::group_by(doi_queried, year) %>%
+  dplyr::summarise(n_citations = n(), .groups = "drop")
+control_cit_per_year <- control_cit_per_year %>%
+  filter(!is.na(year))
+analysis_df_Scopus <- control_cit_per_year
+
+null_doi <- setdiff(full_matched_df$doi, analysis_df_Scopus$doi_queried)
+null_doi <- null_doi[!is.na(null_doi) & null_doi != "NA" & null_doi != ""]
+null_doi <- unique(null_doi)
+length(null_doi)
+```
+
+#checking whether not returned dois are null
+```{r}
+key <- Sys.getenv("SCOPUS_API_KEY")
+
+results <- purrr::map(null_doi, ~ rscopus::citation_retrieval(doi = .x, api_key = key, date_range = c("1900", "2025")))
+ok <- purrr::map_lgl(results, ~ httr::status_code(.x$get_statement) < 400)
+
+table(ok)
+
+parsed <- results[ok] |>
+  purrr::map(rscopus::parse_citation_retrieval)
+dois_ok <- null_doi[ok]
+
+str(parsed[[1]]$citation_info)
+names(parsed[[1]]$citation_info)
+
+citations_null <- purrr::imap_dfr(parsed, \(x, i) {
+  x$citation_info |>
+    select(matches("^cc\\.\\d{4}$")) |>
+    mutate(doi = dois_ok[[i]], .before = 1)
+}) |>
+  pivot_longer(
+    cols = matches("^cc\\.\\d{4}$"),
+    names_to = "year",
+    values_to = "citations"
+  ) |>
+  mutate(
+    year = as.integer(str_remove(year, "^cc\\.")),
+    citations = as.integer(citations)
+  )
+
+citations_null <- citations_null %>% dplyr::group_by(doi) %>% filter(all(citations==0))
+colnames(citations_null) <- colnames(analysis_df_Scopus)
+
+analysis_df_Scopus <- bind_rows(analysis_df_Scopus, citations_null)
+```
+
+
+#metadata for replications - year of publication
+- some replication studies do not have doi, and therefore cannot get metadata through API, the year will be filled manually from web search for those
+
+# pre-analysis modification
+
+```{r}
+replic_year <- df_meta %>% dplyr::select(doi_o, doi_r, publication_year_r)
+orig_year <- full_matched_df %>% dplyr::select(doi, publication_year, issn_l)
+
+analysis_df_Scopus <- prep_analysis_df(analysis_df_Scopus, replic_year, orig_year)
+saveRDS(analysis_df_Scopus, "data/analysis_df_Scopus.rds")
+```
+
+# add years with 0 for years that are later than publication but have no data
+
+```{r}
+analysis_padded_Scopus <- pad_panel(analysis_df_Scopus)
+```
+
+#citation without co-citation
+
+```{r}
+citing_studies_Scopus_rep <- citing_studies_Scopus_rep %>% rename(doi_queried_r = doi_queried)
+citing_studies_Scopus_rep <- citing_studies_Scopus_rep %>%
+  left_join(
+    replic_year,
+    by = c("doi_queried_r" = "doi_r"),
+    relationship = "many-to-many"
+  )
+
+analysis_padded_Scopus <- add_nococit(
+  citations_raw = citations_controlGroup_Scopus,
+  citations_rep = citing_studies_Scopus_rep,
+  citing_id_col = "citing_eid",
+  analysis_padded = analysis_padded_Scopus
+)
+```
+
+#save the cleaned dataset
+```{r}
+saveRDS(analysis_padded_Scopus, "data/analysis_pad_Scopus.rds")
+```

@@ -1,0 +1,209 @@
+---
+title: "_03_control_studies"
+author: "Josefina Weinerova"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+# install.packages("openalexR")
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView
+)
+```
+
+#data loading
+```{r}
+matched_journals <- readRDS("data/matched_journals_pilot.rds")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+
+```
+
+# getting control studies
+
+```{r}
+# function to clean up the issn
+clean_issn <- function(x, validate = TRUE, repair_missing_check = FALSE) {
+  y <- str_to_upper(x)
+  y <- str_replace_all(y, "[^0-9X]", "") # keep only digits/X
+
+  # Must be 8 chars now to be considered an ISSN
+  y[nchar(y) != 8] <- NA_character_
+
+  # Insert hyphen
+  y <- ifelse(is.na(y), NA_character_, paste0(substr(y, 1, 4), "-", substr(y, 5, 8)))
+
+  y
+}
+```
+
+```{r}
+# Tidy split + normalize + dedupe
+get_matches <- matched_journals %>%
+  select(publication_year, issn) %>%
+  tidyr::separate_rows(issn, sep = "\\s*,\\s*") %>% # split to rows
+  mutate(
+    year = suppressWarnings(as.integer(publication_year)),
+    issn = clean_issn(issn, validate = TRUE, repair_missing_check = FALSE)
+  ) %>%
+  distinct(year, issn, .keep_all = TRUE) %>%
+  filter(!is.na(issn), !is.na(year))
+
+
+range(get_matches$year)
+```
+
+# query oa_fetch in batches
+```{r}
+email <- Sys.getenv("MY_EMAIL")
+options(openalexR.mailto = email)
+
+# assumes get_matches has columns: issn (e.g., "1234-5678") and year (integer)
+batch_size <- 50L
+rows_idx <- split(
+  seq_len(nrow(get_matches)),
+  ceiling(seq_along(seq_len(nrow(get_matches))) / batch_size)
+)
+
+results <- list()
+
+for (b in seq_along(rows_idx)) {
+  idxs <- rows_idx[[b]]
+  message(sprintf(
+    "Batch %d/%d: rows %d–%d",
+    b, length(rows_idx), min(idxs), max(idxs)
+  ))
+
+  for (j in seq_along(idxs)) {
+    r <- idxs[j]
+    issn <- get_matches$issn[r]
+    yr <- get_matches$year[r]
+
+    message(sprintf(
+      "  Row %d in batch %d: ISSN=%s, year=%s",
+      j, b, issn, yr
+    ))
+
+    out <- try(
+      oa_fetch(
+        entity = "works",
+        `primary_location.source.issn` = issn, # one ISSN (this row)
+        publication_year = yr, # one year  (this row)
+        type = "article",
+        per_page = 200,
+        options = list(
+          select = c("id", "doi", "display_name", "publication_year", "primary_location")
+        ),
+        verbose = TRUE
+      ),
+      silent = TRUE
+    )
+
+    if (!inherits(out, "try-error") && is.data.frame(out) && nrow(out) > 0) {
+      results[[length(results) + 1]] <- out
+    } else {
+      warning(sprintf("    No data / failed for ISSN=%s, year=%s", issn, yr))
+    }
+
+    Sys.sleep(0.2) # small pause between row-queries
+  }
+
+  Sys.sleep(0.8) # small pause between 50-row batches
+}
+
+matched_articles <- bind_rows(results) %>%
+  distinct(id, .keep_all = TRUE) %>%
+  rename(title = display_name)
+
+length(unique(matched_articles$issn_l))
+length(unique(get_matches$issn))
+matched_articles
+```
+
+# get missing metadata after the first scrape
+
+```{r}
+# checking if still missing some
+pairs1 <- unique(matched_articles[c("publication_year", "issn_l")])
+pairs2 <- unique(matched_journals[c("publication_year", "issn")])
+pairs2 <- pairs2 %>% separate(issn, into = c("issn1", "issn2"))
+pairs2 <- pairs2 %>%
+  mutate(issn1 = str_c(str_sub(issn1, 1, 4), "-", str_sub(issn1, 5, 8))) %>%
+  mutate(issn2 = str_c(str_sub(issn2, 1, 4), "-", str_sub(issn2, 5, 8)))
+# which combo of year and issn is not in the articles but is in the journals
+first_pairs <- pairs1 %>%
+  transmute(publication_year = publication_year, issn = issn_l)
+df2_key <- pairs2 %>% mutate(.row = row_number())
+
+has_match_rows <- df2_key %>%
+  pivot_longer(c(issn1, issn2), names_to = "which", values_to = "issn") %>%
+  filter(!is.na(issn), nzchar(issn)) %>%
+  semi_join(first_pairs, by = c("publication_year", "issn")) %>%
+  distinct(.row)
+
+rows_not_in_first <- df2_key %>%
+  anti_join(has_match_rows, by = ".row")
+
+get <- rows_not_in_first %>%
+  select(publication_year, issn1, issn2) %>%
+  pivot_longer(cols = c(issn1, issn2), values_to = "issn")
+get <- get %>% filter(issn != "-")
+
+# get metadata for missing articles
+out_miss <- oa_fetch(
+  entity = "works",
+  `primary_location.source.issn` = get$issn,
+  publication_year = get$publication_year,
+  type = "article",
+  options = list(
+    select = c("id", "doi", "display_name", "publication_year", "primary_location")
+  ),
+  verbose = TRUE
+)
+out_miss <- out_miss %>% rename(title = display_name)
+matched_articles <- dplyr::select(matched_articles, -license)
+all_matched_articles <- rbind(matched_articles, out_miss)
+all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
+
+# MISSING SOME OF THE JOURNAL MATCHED DOIS
+## need to move this earlier for smoother workflow
+miss_doi <- setdiff(df_meta$doi_o, all_matched_articles$doi)
+df_meta%>%filter(doi_o=="10.1007/s10802-020-00712-w")
+get2 <- df_meta %>%
+  filter(doi_o %in% miss_doi) %>%
+  select(publication_year, issn_l)
+get2 <-unique(get2)
+
+out_miss2 <- oa_fetch(
+  entity = "works",
+  `primary_location.source.issn` = get2$issn_l, # Nature's ISSN-L (example)
+  publication_year = get2$publication_year,
+  type="article",
+  options = list(
+    select = c("id", "doi", "display_name", "publication_year", "primary_location")
+  ),
+  verbose = TRUE
+)
+
+out_miss2 <- out_miss2 %>% rename(title = display_name)
+out_miss2 <- dplyr::select(out_miss2, -license)
+all_matched_articles <- rbind(all_matched_articles, out_miss2)
+all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
+
+setdiff(df_meta$doi_o, all_matched_articles$doi)
+```
+#save ouput
+```{r}
+saveRDS(all_matched_articles, "data/all_matched_articles_pilot.rds")
+
+```
+
+

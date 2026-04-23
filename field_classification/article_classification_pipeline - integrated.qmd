@@ -1,0 +1,926 @@
+---
+title: "Scientific Article Classification Pipeline"
+subtitle: "Two-Step Discipline Classification Using LLMs"
+author: "Adapted from German Federal Statistical Office (Stabu) Classification"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+execute:
+  eval: true
+---
+
+## Overview
+
+This pipeline classifies scientific articles into disciplinary clusters and fields based on title, abstract, and journal title. The classification schema is adapted from the German Federal Statistical Office (Fächersystematik) with modifications.
+
+### Key Design Decisions
+
+1. **Two-step classification**: First assign to a Subject Area, then (if area has >100 papers) assign to a Subject Field within that area
+2. **Journal-title-first classification**: Classification relies primarily on journal titles to minimize interpretation; article content (title and abstract) is used for multidisciplinary journals
+3. **Secondary field for multidisciplinary work**: Each article receives one primary classification, with an optional secondary Subject Area for multidisciplinary articles
+4. **Hierarchical flexibility**: Subject Areas provide broad categories; Subject Fields provide granularity where needed
+
+### Modifications from Original Stabu Schema
+
+- Merged all theology into "Religious Studies & Theology"
+- Merged Media Studies into Communication Studies
+- Added: Marketing, Behavioural/Experimental Economics, Experimental Philosophy
+- Tightened definition of Occupational/Organisational/Business Psychology
+- Changed General and Cognitive Psychology to Cognitive Psychology, to distinguish from Psychology (General)
+- Pull Science Studies from Philosophy into its own cluster to allow for correct classification of metascience papers
+
+- Added specific rules for metascience, consumer behaviour, and JDM research
+
+## Setup
+
+```{r}
+#| label: setup
+#| message: false
+
+library(ellmer)
+library(jsonlite)
+library(here)
+library(dplyr)
+library(purrr)
+library(tibble)
+library(tidyr)
+library(readr)
+library(stringr)
+library(tibble)
+library(openalexR)
+library(httr)
+
+clean_json_text <- function(x) {
+  x <- as.character(x)
+  # Build replacements safely
+  bytes <- c(0x91, 0x92, 0x93, 0x94, 0x96, 0x97, 0x85, 0xD5, 0xCA)
+  repl <- c("'", "'", '"', '"', "-", "-", "...", "'", "")
+  names(repl) <- vapply(
+    bytes,
+    function(b) rawToChar(as.raw(b), multiple = FALSE),
+    FUN.VALUE = character(1)
+  )
+  # Replace byte patterns
+  for (bad in names(repl)) {
+    x <- gsub(bad, repl[[bad]], x, fixed = TRUE, useBytes = TRUE)
+  }
+  # Drop control characters except newline and tab
+  x <- stringi::stri_replace_all_regex(
+    x,
+    "[\\p{Cc}&&[^\\n\\t]]",
+    ""
+  )
+  # Final UTF-8 normalisation
+  iconv(x, from = "", to = "UTF-8", sub = "")  
+}
+
+# Helper function for missing value handling
+`%||%` <- function(x, y) {
+  if (is.null(x)) return(y)
+  if (is.character(x) && length(x) == 1 && is.na(x)) return(y)
+  if (length(x) == 0) return(y)
+  x
+}
+```
+
+## Schema Validation Functions
+
+```{r}
+#| label: schema-validation-helpers
+
+# Validate cluster schema structure
+validate_cluster_schema <- function(x) {
+  if (!is.list(x) || is.null(x$clusters)) {
+    stop("cluster_schema must be a list with element 'clusters'.")
+  }
+
+  allowed_top <- c("version", "description", "clusters")
+  extra_top <- setdiff(names(x), allowed_top)
+  if (length(extra_top) > 0) {
+    warning(
+      "Ignoring unsupported top-level fields in cluster_schema: ",
+      paste(extra_top, collapse = ", ")
+    )
+  }
+
+  x$clusters <- lapply(x$clusters, function(cl) {
+    if (is.null(cl$id) || is.null(cl$label)) {
+      stop("Each cluster must have 'id' and 'label'.")
+    }
+    allowed <- c("id", "label", "notes")
+    extra <- setdiff(names(cl), allowed)
+    if (length(extra) > 0) {
+      warning(
+        "Ignoring unsupported fields in cluster '", cl$id, "': ",
+        paste(extra, collapse = ", ")
+      )
+    }
+    # Don't add empty fields - code handles missing fields with %||% operator
+    cl
+  })
+
+  x
+}
+
+# Validate psychology fields schema
+validate_psychology_schema <- function(x) {
+  if (!is.list(x) || is.null(x$fields)) {
+    stop("psychology_fields_schema must be a list with element 'fields'.")
+  }
+
+  allowed_top <- c("version", "description", "cluster_id", "cluster_label", "fields")
+  extra_top <- setdiff(names(x), allowed_top)
+  if (length(extra_top) > 0) {
+    warning(
+      "Ignoring unsupported top-level fields in psychology_fields_schema: ",
+      paste(extra_top, collapse = ", ")
+    )
+  }
+
+  x$fields <- lapply(x$fields, function(f) {
+    if (is.null(f$id) || is.null(f$label)) {
+      stop("Each psychology field must have 'id' and 'label'.")
+    }
+    allowed <- c(
+      "id", "label", "description",
+      "positive_criteria", "exclusions"
+    )
+    extra <- setdiff(names(f), allowed)
+    if (length(extra) > 0) {
+      warning(
+        "Ignoring unsupported fields in psychology field '", f$id, "': ",
+        paste(extra, collapse = ", ")
+      )
+    }
+    # Don't add empty fields - code handles missing fields with %||% operator
+    f
+  })
+
+  x
+}
+
+# Validate economics fields schema (same structure as psychology)
+validate_economics_schema <- function(x) {
+  if (!is.list(x) || is.null(x$fields)) {
+    stop("economics_fields_schema must be a list with element 'fields'.")
+  }
+
+  allowed_top <- c("version", "description", "cluster_id", "cluster_label", "fields")
+  extra_top <- setdiff(names(x), allowed_top)
+  if (length(extra_top) > 0) {
+    warning(
+      "Ignoring unsupported top-level fields in economics_fields_schema: ",
+      paste(extra_top, collapse = ", ")
+    )
+  }
+
+  x$fields <- lapply(x$fields, function(f) {
+    if (is.null(f$id) || is.null(f$label)) {
+      stop("Each economics field must have 'id' and 'label'.")
+    }
+    allowed <- c(
+      "id", "label", "description",
+      "positive_criteria", "exclusions"
+    )
+    extra <- setdiff(names(f), allowed)
+    if (length(extra) > 0) {
+      warning(
+        "Ignoring unsupported fields in economics field '", f$id, "': ",
+        paste(extra, collapse = ", ")
+      )
+    }
+    # Don't add empty fields - code handles missing fields with %||% operator
+    f
+  })
+
+  x
+}
+```
+
+## Classification Schema
+
+### Cluster Schema
+
+The cluster schema defines the top-level disciplinary categories. Each cluster includes notes that serve as classification guidance and exclusion rules.
+  
+```{r}
+#| label: cluster-schema
+
+# Load cluster schema from JSON
+cluster_schema_path <- here::here("field_classification", "schemas", "cluster_schema.json")
+cluster_schema <- fromJSON(cluster_schema_path, simplifyVector = FALSE)
+cluster_schema <- validate_cluster_schema(cluster_schema)
+
+# For LLM prompt: only send clusters array, strip metadata (version, description)
+cluster_schema_json <- toJSON(cluster_schema$clusters, pretty = TRUE, auto_unbox = TRUE)
+```
+
+### Psychology Fields Schema
+
+For Subject Areas with sufficient articles (>100), we classify into more specific Subject Fields. Here is the Psychology fields schema as an example:
+
+```{r}
+#| label: psychology-fields-schema
+
+# Load psychology fields schema from JSON
+psychology_fields_path <- here::here("field_classification", "schemas", "psychology_fields_schema.json")
+psychology_fields_schema <- fromJSON(psychology_fields_path, simplifyVector = FALSE)
+psychology_fields_schema <- validate_psychology_schema(psychology_fields_schema)
+
+# For LLM prompt: only send fields array, strip metadata (version, description, cluster_id, cluster_label)
+psychology_fields_json <- toJSON(psychology_fields_schema$fields, pretty = TRUE, auto_unbox = TRUE)
+```
+
+### Economics & Business Fields Schema
+
+```{r}
+#| label: economics-fields-schema
+
+# Load economics fields schema from JSON
+economics_fields_path <- here::here("field_classification", "schemas", "economics_fields_schema.json")
+economics_fields_schema <- fromJSON(economics_fields_path, simplifyVector = FALSE)
+economics_fields_schema <- validate_economics_schema(economics_fields_schema)
+
+# For LLM prompt: only send fields array, strip metadata
+economics_fields_json <- toJSON(economics_fields_schema$fields, pretty = TRUE, auto_unbox = TRUE)
+```
+
+## Classification Prompts (Template Reference)
+
+These prompts are used as templates for the `build_*_system_prompt()` functions below. Edit here for prompt engineering changes.
+
+### Cluster Classification Prompt Template
+
+```{r}
+#| label: cluster-prompt-template
+#| echo: true
+#| code-fold: false
+
+# Reference template - used with glue(cluster_prompt_template, cluster_schema = cluster_schema_json)
+cluster_prompt_template <- ('
+You classify scientific articles into discipline clusters (Subject Areas).
+
+Use ONLY the clusters defined in the JSON array below.
+Classification should rely primarily on the journal title, as it typically indicates the disciplinary field.
+Only when the journal is clearly multidisciplinary or interdisciplinary (e.g., Nature, Science, PLOS ONE, PNAS),
+use the article title and abstract to determine the best-fitting cluster.
+Never invent new clusters; always return one of the existing id values.
+
+For multidisciplinary articles, assign one primary cluster that best fits the core contribution.
+If the article genuinely spans two disciplines, also assign a secondary cluster.
+
+Key distinctions:
+- Psychology vs Sociology: Individual processes vs social structure/institutions
+- Psychology vs Economics: Psychological theory vs economic framing (utility, incentives, markets)
+- Education vs Teaching: Educational systems vs teaching methods in a discipline
+- Media vs Political Science: Media/communication vs political processes/institutions
+- Metascience: Only for science in general, not discipline-specific methods
+- Methods papers: Belong to the discipline being studied
+
+AVAILABLE CLUSTERS (JSON array):
+{cluster_schema}
+
+You will receive articles as JSON with: article_title, article_abstract, journal_title
+
+Respond with a JSON object containing:
+- "cluster_id": the id of the primary matching cluster (string)
+- "confidence": your confidence from 0 to 1 (number)
+- "secondary_cluster_id": the id of a secondary cluster if the article is multidisciplinary (string or null)
+- "secondary_confidence": confidence for the secondary cluster, if applicable (number or null)
+')
+```
+
+### Psychology Fields Classification Prompt Template
+
+```{r}
+#| label: field-prompt-psychology-template
+#| echo: true
+#| code-fold: false
+
+# Reference template - used with glue(psychology_field_prompt_template, psychology_fields_schema = psychology_fields_json)
+psychology_field_prompt_template <- '
+You classify psychology articles into a single primary psychology subfield (Subject Field).
+
+Use ONLY the fields defined in the JSON array below.
+Classification should rely primarily on the journal title where it indicates a specific subfield.
+For general psychology journals, use the article title and abstract to determine the best-fitting subfield.
+If interdisciplinary, pick the subfield that best fits the core psychological contribution.
+Never invent new fields; always return one of the existing id values.
+
+Key distinctions:
+- Psychology (General): Last resort only when no single subfield clearly dominates
+- Occupational Psychology: Requires BOTH work-specific constructs AND theoretical claims about work
+  - Workplace as setting only → classify by underlying theory (e.g., prejudice reduction → Social)
+  - Work-specific constructs (leadership, burnout, job satisfaction) → Occupational
+- Educational Psychology: Learning/motivation/assessment in educational settings only
+- Methods: Primary contribution must be methodological (new measure, technique, or meta-analytic method)
+
+AVAILABLE FIELDS (JSON array):
+{psychology_fields_schema}
+
+You will receive articles as JSON with: article_title, article_abstract, journal_title
+
+Respond with a JSON object containing:
+- "field_id": the id of the matching field (string)
+- "confidence": your confidence from 0 to 1 (number)
+'
+```
+
+## Chat Constructors with Provider Flexibility
+
+Simple glue templates using already-loaded JSON. Edit templates above to tune prompt behavior.
+
+```{r}
+#| label: chat-constructors
+library(glue)
+
+# Create cluster classification chat with provider flexibility
+create_cluster_chat <- function(
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra",
+  api_args = list(temperature = 0)
+) {
+  system_prompt <- glue(cluster_prompt_template,
+                        cluster_schema = cluster_schema_json)
+
+  if (provider == "deepinfra") {
+    # Use chat_openai_compatible for DeepInfra (uses /chat/completions endpoint;
+    # chat_openai in ellmer >= 0.4.0 uses /responses which DeepInfra doesn't support)
+    deepinfra_args <- modifyList(api_args, list(
+      prompt_cache_key = "cluster_classification"
+    ))
+    chat_openai_compatible(
+      base_url = "https://api.deepinfra.com/v1/openai",
+      name = "deepinfra",
+      system_prompt = system_prompt,
+      model = model,
+      credentials = function() Sys.getenv("DEEPINFRA_API_KEY"),
+      api_args = deepinfra_args,
+      echo = "none"
+    )
+  } else if (provider == "openai") {
+    chat_openai(
+      system_prompt = system_prompt,
+      model = model,
+      api_args = api_args,
+      echo = "none"
+    )
+  } else if (provider == "anthropic") {
+    chat_anthropic(
+      system_prompt = system_prompt,
+      model = model,
+      api_args = api_args,
+      echo = "none"
+    )
+  } else {
+    stop("Provider must be 'deepinfra', 'openai', or 'anthropic'")
+  }
+}
+
+# Create psychology classification chat
+create_psychology_chat <- function(
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra",
+  api_args = list(temperature = 0)
+) {
+  system_prompt <- glue(psychology_field_prompt_template,
+                        psychology_fields_schema = psychology_fields_json)
+
+  if (provider == "deepinfra") {
+    deepinfra_args <- modifyList(api_args, list(
+      prompt_cache_key = "psychology_field_classification"
+    ))
+    chat_openai_compatible(
+      base_url = "https://api.deepinfra.com/v1/openai",
+      name = "deepinfra",
+      system_prompt = system_prompt,
+      model = model,
+      credentials = function() Sys.getenv("DEEPINFRA_API_KEY"),
+      api_args = deepinfra_args,
+      echo = "none"
+    )
+  } else if (provider == "openai") {
+    chat_openai(
+      system_prompt = system_prompt,
+      model = model,
+      api_args = api_args,
+      echo = "none"
+    )
+  } else if (provider == "anthropic") {
+    chat_anthropic(
+      system_prompt = system_prompt,
+      model = model,
+      api_args = api_args,
+      echo = "none"
+    )
+  } else {
+    stop("Provider must be 'deepinfra', 'openai', or 'anthropic'")
+  }
+}
+```
+
+## Cluster Field Breakdown Configuration
+
+```{r}
+#| label: cluster-breakdowns
+
+# Define field schemas and chat constructors for each cluster that has field-level classification
+cluster_breakdowns <- list(
+  psychology = list(
+    schema = psychology_fields_schema,
+    schema_json = psychology_fields_json,
+    prompt_template = psychology_field_prompt_template,
+    chat_constructor = create_psychology_chat
+  )
+  # economics = list(
+  #   schema = economics_fields_schema,
+  #   schema_json = economics_fields_json,
+  #   prompt_template = economics_field_prompt_template,
+  #   chat_constructor = create_economics_chat
+  # )
+)
+```
+
+## Structured Output Definitions with ellmer
+
+```{r}
+#| label: type-definitions
+
+# Define the cluster classification output type
+# Note: No rationale field - we use reasoning_content from model response instead
+type_cluster_result <- type_object(
+  "Cluster classification result for a scientific article",
+  cluster_id = type_string("Cluster id from the schema."),
+  confidence = type_number("Confidence from 0 (very uncertain) to 1 (very confident)."),
+  secondary_cluster_id = type_string("Secondary cluster id for multidisciplinary articles, or null."),
+  secondary_confidence = type_number("Confidence for the secondary cluster, or null.")
+)
+
+# Define the field classification output type
+# Note: No rationale field - we use reasoning_content from model response instead
+type_field_result <- type_object(
+  "Subfield classification result for a scientific article",
+  field_id = type_string("Field id from the schema."),
+  confidence = type_number("Confidence from 0 (very uncertain) to 1 (very confident).")
+)
+```
+
+## Classification Functions
+
+### Helper: Extract results from chat responses
+
+```{r}
+#| label: extract-helpers
+
+# Extract classification results and reasoning from parallel_chat responses
+extract_cluster_results <- function(chats) {
+  map_dfr(chats, function(chat) {
+    turns <- chat$get_turns()
+    assistant_turn <- turns[[2]]
+
+    # Parse JSON content
+    content <- assistant_turn@text
+    parsed <- tryCatch(
+      fromJSON(content),
+      error = function(e) list(cluster_id = NA_character_, confidence = NA_real_,
+                               secondary_cluster_id = NA_character_, secondary_confidence = NA_real_)
+    )
+
+    # Extract reasoning_content from raw response
+    reasoning <- tryCatch(
+      assistant_turn@json$choices[[1]]$message$reasoning_content %||% NA_character_,
+      error = function(e) NA_character_
+    )
+
+    tibble(
+      cluster_id = parsed$cluster_id %||% NA_character_,
+      confidence = parsed$confidence %||% NA_real_,
+      secondary_cluster_id = parsed$secondary_cluster_id %||% NA_character_,
+      secondary_confidence = parsed$secondary_confidence %||% NA_real_,
+      reasoning = reasoning
+    )
+  })
+}
+
+extract_field_results <- function(chats) {
+  map_dfr(chats, function(chat) {
+    turns <- chat$get_turns()
+    assistant_turn <- turns[[2]]
+
+    # Parse JSON content
+    content <- assistant_turn@text
+    parsed <- tryCatch(
+      fromJSON(content),
+      error = function(e) list(field_id = NA_character_, confidence = NA_real_)
+    )
+
+    # Extract reasoning_content from raw response
+    reasoning <- tryCatch(
+      assistant_turn@json$choices[[1]]$message$reasoning_content %||% NA_character_,
+      error = function(e) NA_character_
+    )
+
+    tibble(
+      field_id = parsed$field_id %||% NA_character_,
+      field_confidence = parsed$confidence %||% NA_real_,
+      field_reasoning = reasoning
+    )
+  })
+}
+```
+
+### Clusters (Batch Processing)
+
+```{r}
+#| label: batch-processing-parallel
+
+classify_articles_batch <- function(
+  articles_df,
+  title_col = "title",
+  abstract_col = "abstract",
+  journal_col = "journal",
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra"
+) {
+  # Create chat for cluster classification
+  cluster_chat <- create_cluster_chat(
+    model = model,
+    provider = provider,
+    api_args = list(temperature = 0)
+  )
+
+  # Prepare prompts for batch processing
+  articles_list <- articles_df |>
+    rowwise() |>
+    reframe(
+      article = toJSON(
+        list(
+          article_title = .data[[title_col]] %||% "",
+          article_abstract = .data[[abstract_col]] %||% "",
+          journal_title = .data[[journal_col]] %||% ""
+        ),
+        auto_unbox = TRUE
+      )
+    ) |>
+    pull(article) |>
+    as.character()  |>
+    clean_json_text() |>
+    as.list()
+
+  # Batch classify clusters using parallel processing
+  # Use parallel_chat (not parallel_chat_structured) to access reasoning_content
+  cat("Classifying articles into clusters (parallel processing)...\n")
+  chat_results <- parallel_chat(
+    chat = cluster_chat,
+    prompts = articles_list
+  )
+
+  # Extract structured results and reasoning
+  cluster_results_df <- extract_cluster_results(chat_results)
+
+  # Combine results with original data
+  articles_df |>
+    bind_cols(cluster_results_df)
+}
+```
+
+## Field Classification for Large Clusters
+
+```{r}
+#| label: field-processing-parallel
+
+classify_cluster_fields <- function(
+  cluster_results,
+  cluster_breakdowns,
+  title_col = "title",
+  abstract_col = "abstract",
+  journal_col = "journal",
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra",
+  field_threshold = 100
+) {
+  # Count articles per cluster
+  cluster_counts <- cluster_results |>
+    count(cluster_id) |>
+    arrange(desc(n))
+
+  cat("\n=== CLUSTERS REQUIRING FIELD CLASSIFICATION ===\n")
+  clusters_above_threshold <- cluster_counts |>
+    filter(n >= field_threshold)
+
+  if (nrow(clusters_above_threshold) > 0) {
+    print(clusters_above_threshold)
+  } else {
+    cat("No clusters with >= ", field_threshold, " articles\n")
+    return(cluster_results)
+  }
+
+  # Process each cluster with available field schema
+  results_with_fields <- tibble()
+
+  for (cluster_id in clusters_above_threshold$cluster_id) {
+    if (!(cluster_id %in% names(cluster_breakdowns))) {
+      cat(sprintf("Note: No field schema available for cluster '%s'\n", cluster_id))
+      next
+    }
+
+    config <- cluster_breakdowns[[cluster_id]]
+    articles_idx <- which(cluster_results$cluster_id == cluster_id)
+    n_articles <- length(articles_idx)
+
+    cat(sprintf(
+      "\nClassifying %d %s articles into fields (parallel processing)...\n",
+      n_articles, cluster_id
+    ))
+
+    # Create field chat for this cluster
+    field_chat <- config$chat_constructor(
+      model = model,
+      provider = provider,
+      api_args = list(temperature = 0)
+    )
+
+    # Prepare prompts
+    field_prompts <- cluster_results[articles_idx, ] |>
+      rowwise() |>
+      reframe(
+        article = toJSON(
+          list(
+            article_title = .data[[title_col]] %||% "",
+            article_abstract = .data[[abstract_col]] %||% "",
+            journal_title = .data[[journal_col]] %||% ""
+          ),
+          auto_unbox = TRUE
+        )
+      ) |>
+      pull(article) |>
+      as.character() |>
+      clean_json_text() |>
+      as.list()
+
+    # Classify fields using parallel_chat to access reasoning_content
+    field_chat_results <- parallel_chat(
+      chat = field_chat,
+      prompts = field_prompts
+    )
+
+    # Extract structured results and reasoning
+    field_results_df <- extract_field_results(field_chat_results)
+
+    current_cluster <- cluster_id
+
+    current_results <- cluster_results %>%
+      filter(cluster_id == current_cluster) %>%
+      bind_cols(field_results_df)
+
+    cluster_results <- cluster_results %>%
+      filter(cluster_id != current_cluster)
+
+    results_with_fields <- bind_rows(results_with_fields, current_results)
+
+  }
+
+  bind_rows(results_with_fields, cluster_results)
+}
+```
+
+
+## Abstract Retrieval
+
+Retrieve abstracts for original studies (`doi_o`). First attempts OpenAlex (which stores abstracts as inverted indices that need to be reconstructed), then falls back to Scopus for any DOIs where OpenAlex did not return an abstract.
+
+```{r}
+#| label: abstract-retrieval-functions
+
+#' Fetch abstracts from OpenAlex and Scopus
+#'
+#' @param dois Character vector of DOIs
+#' @param scopus_api_key Scopus API key (defaults to SCOPUS_API_KEY env var)
+#' @param openalex_email Email for polite OpenAlex API access
+#' @return Tibble with columns: doi, title, abstract, source_display_name, abstract_source
+fetch_abstracts <- function(
+  dois,
+  scopus_api_key = Sys.getenv("SCOPUS_API_KEY"),
+  openalex_email = Sys.getenv("OPENALEX_EMAIL", "l.wallrich@bbk.ac.uk")
+) {
+  dois <- unique(na.omit(trimws(dois)))
+  # Normalise: strip URL prefix for matching
+  dois_bare <- sub("^https?://(dx\\.)?doi\\.org/", "", dois, ignore.case = TRUE)
+
+  # --- Step 1: OpenAlex (abstracts are stored as inverted indices, oa_fetch uninverts them) ---
+  cat(sprintf("Querying OpenAlex for %d DOIs...\n", length(dois_bare)))
+  options(openalexR.mailto = openalex_email)
+
+  oa_results <- tryCatch(
+    openalexR::oa_fetch(
+      entity = "works",
+      doi = dois_bare,
+      verbose = TRUE
+    ),
+    error = function(e) {
+      warning("OpenAlex query failed: ", e$message)
+      tibble()
+    }
+  )
+
+  if (nrow(oa_results) > 0) {
+    oa_abstracts <- oa_results |>
+      transmute(
+        doi = sub("^https?://(dx\\.)?doi\\.org/", "", doi, ignore.case = TRUE),
+        title = title,
+        abstract = abstract,
+        source_display_name = source_display_name,
+        abstract_source = "openalex"
+      ) |>
+      filter(!is.na(abstract) & nchar(abstract) > 0)
+    cat(sprintf("  OpenAlex returned abstracts for %d / %d DOIs\n",
+                nrow(oa_abstracts), length(dois_bare)))
+  } else {
+    oa_abstracts <- tibble(
+      doi = character(), title = character(),
+      abstract = character(), source_display_name = character(),
+      abstract_source = character()
+    )
+    cat("  OpenAlex returned no results\n")
+  }
+
+  # --- Step 2: Scopus fallback for missing abstracts ---
+  missing_dois <- setdiff(tolower(dois_bare), tolower(oa_abstracts$doi))
+
+  if (length(missing_dois) > 0 && nzchar(scopus_api_key)) {
+    cat(sprintf("Querying Scopus for %d remaining DOIs...\n", length(missing_dois)))
+
+    scopus_abstracts <- purrr::map_dfr(missing_dois, function(doi) {
+      tryCatch({
+        Sys.sleep(0.25)  # rate limiting
+        resp <- httr::GET(
+          paste0("https://api.elsevier.com/content/abstract/doi/", doi),
+          httr::add_headers(
+            "X-ELS-APIKey" = scopus_api_key,
+            "Accept" = "application/json"
+          )
+        )
+        if (httr::status_code(resp) != 200) {
+          message("  Scopus: HTTP ", httr::status_code(resp), " for ", doi)
+          return(tibble(
+            doi = doi, title = NA_character_,
+            abstract = NA_character_, source_display_name = NA_character_,
+            abstract_source = NA_character_
+          ))
+        }
+
+        body <- httr::content(resp, as = "parsed", encoding = "UTF-8")
+        core <- body$`abstracts-retrieval-response`$coredata
+
+        tibble(
+          doi = doi,
+          title = core$`dc:title` %||% NA_character_,
+          abstract = core$`dc:description` %||% NA_character_,
+          source_display_name = core$`prism:publicationName` %||% NA_character_,
+          abstract_source = "scopus"
+        )
+      }, error = function(e) {
+        message("  Scopus error for ", doi, ": ", e$message)
+        tibble(
+          doi = doi, title = NA_character_,
+          abstract = NA_character_, source_display_name = NA_character_,
+          abstract_source = NA_character_
+        )
+      })
+    }) |>
+      filter(!is.na(abstract) & nchar(abstract) > 0)
+
+    cat(sprintf("  Scopus returned abstracts for %d / %d DOIs\n",
+                nrow(scopus_abstracts), length(missing_dois)))
+  } else {
+    if (length(missing_dois) > 0 && !nzchar(scopus_api_key)) {
+      warning("No SCOPUS_API_KEY set; skipping Scopus fallback for ",
+              length(missing_dois), " DOIs without abstracts")
+    }
+    scopus_abstracts <- tibble(
+      doi = character(), title = character(),
+      abstract = character(), source_display_name = character(),
+      abstract_source = character()
+    )
+  }
+
+  # --- Combine results ---
+  combined <- bind_rows(oa_abstracts, scopus_abstracts) |>
+    distinct(doi, .keep_all = TRUE)
+
+  still_missing <- setdiff(tolower(dois_bare), tolower(combined$doi))
+  if (length(still_missing) > 0) {
+    warning(length(still_missing), " DOIs have no abstract from either source: ",
+            paste(head(still_missing, 5), collapse = ", "),
+            if (length(still_missing) > 5) "..." else "")
+  }
+
+  cat(sprintf("Total: %d / %d DOIs with abstracts\n", nrow(combined), length(dois_bare)))
+  combined
+}
+```
+
+```{r}
+#| label: retrieve-abstracts
+#| eval: false
+
+# Load main dataset and extract unique original-study DOIs
+cos_data <- read_csv(here::here("2025-02-07_COSdata_validated_delivered.csv"))
+dois_o <- unique(na.omit(cos_data$doi_o))
+
+# Fetch abstracts (OpenAlex first, Scopus fallback)
+articles <- fetch_abstracts(dois_o)
+
+# Save for reuse
+write_csv(articles, here::here("field_classification", "article_abstracts.csv"))
+```
+
+## Classification Run
+
+```{r}
+#| label: run-coding
+#| eval: false
+
+# Load abstracts (from retrieval step above, or previously saved)
+articles <- read_csv(here::here("field_classification", "article_abstracts.csv"))
+
+# Batch classification with DeepInfra (default)
+# Prompt caching is automatic - keeps system prompt cached across requests
+results <- classify_articles_batch(
+  articles_df = articles,
+  title_col = "title",
+  abstract_col = "abstract",
+  journal_col = "source_display_name"
+  # Uses defaults: model = "openai/gpt-oss-120b", provider = "deepinfra"
+)
+
+# View cluster classifications
+results %>%
+  select(doi, title, cluster_id, confidence_cluster) %>%
+  head(10)
+
+# # For testing with OpenAI:
+# results_openai <- classify_articles_batch(
+#   articles_df = articles,
+#   title_col = "title",
+#   abstract_col = "abstract",
+#   journal_col = "source_display_name",
+#   model = "gpt-4o",
+#   provider = "openai"
+# )
+
+results <- classify_cluster_fields(
+  results, journal_col = "source_display_name",
+  cluster_breakdowns = cluster_breakdowns
+)
+
+glimpse(results)
+
+write_csv(results, "classified_articles.csv")
+
+```
+
+## Validation and Quality Checks
+
+```{r}
+#| label: validation
+#| eval: false
+
+results %>% filter(confidence < .9) 
+
+```
+
+## Appendix: Full Cluster List
+
+```{r}
+#| label: cluster-list
+#| echo: false
+
+# Create a readable table of clusters
+cluster_table <- tibble(
+ ID = map(cluster_schema$clusters, "id") %>% unlist(),
+ Label = map(cluster_schema$clusters, "label") %>% unlist(),
+ Key_Notes = map(cluster_schema$clusters, ~ paste(.x$notes[1], collapse = " ") %>% unlist())
+)
+
+gt::gt(cluster_table) %>%
+  gt::tab_header(
+    title = "Summary of Classification Clusters"
+  )
+
+
+psych_table <- tibble(
+ ID = map(psychology_fields_schema$fields, "id") %>% unlist(),
+ Label = map(psychology_fields_schema$fields, "label") %>% unlist(),
+ Key_Notes = map(psychology_fields_schema$fields, ~ paste(.x$notes[1], collapse = " ") %>% unlist())
+)
+
+gt::gt(psych_table) %>%
+  gt::tab_header(
+    title = "Summary of Psychology Fields"
+  )
+```

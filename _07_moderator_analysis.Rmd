@@ -1,0 +1,1992 @@
+---
+title: "_07_moderator_analysis"
+author: "Josefina Weinerova"
+date: "2026-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+# install.packages("openalexR")
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView,metafor,metacart,fixest,grf,metaforest,caret, roadoi
+)
+```
+
+#data load
+```{r}
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+meta_r <- readRDS("data/metadata_r_OpenAlex.rds")
+```
+
+#switch data source
+```{r}
+# Choose data source: "OC" or "Scopus"
+data_source <- "Scopus"
+
+# Choose outcome variable: "citation" or "nocitation"
+data_outcome <- "citation"
+
+fit <- switch(
+  paste(data_source, data_outcome, sep = "_"),
+  
+  "OC_citation"      = readRDS("models/fit_citation_OC.rds"),
+  "OC_nocitation"    = readRDS("models/fit_nocitation_OC.rds"),
+  "Scopus_citation"  = readRDS("models/fit_citation_Scopus.rds"),
+  "Scopus_nocitation"= readRDS("models/fit_nocitation_Scopus.rds"),
+  
+  stop("Invalid combination of data_source and data_outcome")
+)
+```
+## regression analysis
+# per unit and time estimates
+```{r}
+
+E <- fit$eff
+M <- (fit$D.dat == 1)
+E[!M] <- NA
+
+# Dimensions already match — no need to assign rownames/colnames
+boot_arr <- fit$eff.boot  # 27 x 900 x 500
+
+# Sampling variance and SE across 500 bootstrap draws per cell
+cell_var <- apply(boot_arr, c(1, 2), var, na.rm = TRUE)
+cell_se  <- apply(boot_arr, c(1, 2), sd,  na.rm = TRUE)
+
+cell_n <- apply(boot_arr, c(1, 2), function(x) sum(!is.na(x)))
+hist(cell_n)
+
+
+# Copy dimnames from eff to the derived matrices
+dimnames(cell_var) <- dimnames(fit$eff)
+dimnames(cell_se)  <- dimnames(fit$eff)
+
+# Reshape all three to long format
+eff_long <- as.data.frame(E) |>
+  tibble::rownames_to_column("time") |>
+  tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "att")
+
+var_long <- as.data.frame(cell_var) |>
+  tibble::rownames_to_column("time") |>
+  tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "sampling_var")
+
+se_long <- as.data.frame(cell_se) |>
+  tibble::rownames_to_column("time") |>
+  tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "sampling_se")
+
+# Join and clean
+eff_long <- eff_long |>
+  dplyr::left_join(var_long, by = c("time", "doi_o")) |>
+  dplyr::left_join(se_long,  by = c("time", "doi_o")) |>
+  dplyr::mutate(time = as.integer(time)) |>
+  dplyr::filter(!is.na(att))
+
+head(eff_long)
+range(eff_long$time)
+
+eff_long %>% arrange(doi_o)
+range(eff_long$sampling_var)
+```
+
+#moderators
+```{r}
+mods <- df_meta %>% dplyr::select(doi_o,doi_r,issn_l, publication_year_r)
+mods_r <- meta_r %>% dplyr::select(doi,issn_l)
+mods <- left_join(mods, mods_r, by = c("doi_r" = "doi"), suffix = c("", "_r"))
+mods<-unique(mods)
+# effect <- df %>% filter(effect_id==1) %>% select(doi_o,doi_r,es_value_o)
+# mods <- merge(mods,effect, by.x=c("doi","doi_r"),by.y=c("doi_o","doi_r"))
+
+
+```
+#SNIP
+```{r}
+SNIP <- read_csv("CWTS_ March_2025.csv")
+
+print <-setdiff(mods$issn_l_r,SNIP$`Print ISSN`)
+electronic<-setdiff(mods$issn_l_r,SNIP$`Electronic ISSN`)
+#how many r studies dont have SNIP
+intersect(print, electronic)
+
+
+
+# Reshape SNIP so that both ISSN types are in one column
+SNIP_long <- SNIP %>%
+  mutate(ISSN = `Print ISSN`) %>%
+  bind_rows(SNIP %>% mutate(ISSN = `Electronic ISSN`)) %>%
+  distinct(ISSN, Year, .keep_all = TRUE)
+
+# Join and keep only the SNIP column (plus original mods columns)
+mods <- mods %>%
+  left_join(
+    SNIP_long %>% select(ISSN, Year, SNIP),
+    by = c("issn_l_r" = "ISSN", "publication_year_r" = "Year")
+  )
+
+```
+
+
+
+#subject field of original
+- load field classification from the abstract.rds
+```{r}
+subject <- read_csv("field_classification/validation_classified.csv")
+table(subject$field_id)
+subject <- subject %>%
+  group_by(field_id) %>%
+  mutate(field_id = case_when(
+    n() < 10 ~ paste0(first(cluster_id), "_other"),
+    TRUE ~ field_id
+  ))
+
+subject$subject_final <- ifelse(is.na(subject$field_id),subject$cluster_id,subject$field_id)
+
+subject <- subject %>%
+  group_by(subject_final) %>%
+  mutate(subject_final = case_when(
+    n() < 10 ~ "other",
+    TRUE ~ subject_final
+  ))
+
+table(subject$subject_final)
+
+subject <- subject %>% rename(doi_o=doi)
+
+mods <- mods %>%
+  left_join(subject %>% select(doi_o, subject_final), by = "doi_o")
+
+```
+
+#availability of replication
+-unpaywall api
+```{r}
+email <- Sys.getenv("MY_EMAIL")
+
+# Load existing cache if it exists, otherwise start fresh
+if (file.exists("oa_unpaywall.rds")) {
+  oa_unpaywall <- readRDS("oa_unpaywall.rds")
+} else {
+  oa_unpaywall <- tibble()
+}
+
+# Step 1: Identify DOIs that need querying
+# (not yet in cache, or where is_oa is NA)
+dois_to_query <- mods$doi_r[
+  !is.na(mods$doi_r) &
+  (
+    !mods$doi_r %in% oa_unpaywall$doi |
+    mods$doi_r %in% oa_unpaywall$doi[is.na(oa_unpaywall$is_oa)]
+  )
+]
+
+# Step 2: Query Unpaywall only for missing/incomplete DOIs
+if (length(dois_to_query) > 0) {
+  new_results <- oadoi_fetch(dois = dois_to_query, email = email) %>%
+    select(doi, is_oa, oa_status, best_oa_location)
+  
+  # Update cache: remove stale entries for re-queried DOIs, add new results
+  oa_unpaywall <- oa_unpaywall %>%
+    filter(!doi %in% new_results$doi) %>%
+    bind_rows(new_results)
+  
+  saveRDS(oa_unpaywall, "oa_unpaywall.rds")
+} else {
+  message("All DOIs already cached — no API calls needed.")
+}
+
+# Step 3: Join to mods (left join so unmatched oa_unpaywall rows are dropped)
+mods <- mods %>%
+  left_join(
+    oa_unpaywall %>% select(doi, is_oa, oa_status),
+    by = c("doi_r" = "doi")
+  )
+# # Step 2: CORE 
+# check_core <- function(doi) {
+#   Sys.sleep(0.1)
+#   
+#   resp <- tryCatch({
+#     request("https://api.core.ac.uk/v3/works/") %>%
+#       req_url_path_append(doi) %>%
+#       req_headers(Authorization = core_key) %>%
+#       req_error(is_error = \(resp) FALSE) %>%
+#       req_perform()
+#   }, error = function(e) NULL)
+#   
+#   if (is.null(resp) || resp_status(resp) != 200) {
+#     return(list(doi = doi, core_found = FALSE, core_fulltext = FALSE, core_url = NA))
+#   }
+#   
+#   data <- resp_body_json(resp)
+#   
+#   has_fulltext <- !is.null(data$downloadUrl) && nchar(data$downloadUrl) > 0
+#   has_source <- length(data$sourceFulltextUrls) > 0
+#   
+#   list(
+#     doi = doi,
+#     core_found = TRUE,
+#     core_fulltext = has_fulltext | has_source,
+#     core_url = if (has_fulltext) data$downloadUrl else if (has_source) data$sourceFulltextUrls[[1]] else NA
+#   )
+# }
+# 
+# core_results <- purrr::map_dfr(test_cases$doi_r, check_core)
+# 
+# # Step 3: Combine — mark as OA if either source says so
+# combined <- oa_unpaywall %>%
+#   left_join(core_results, by = "doi") %>%
+#   mutate(is_oa_combined = is_oa | core_fulltext)
+```
+#same/different journal
+```{r}
+mods$same_journal <- mods$issn_l==mods$issn_l_r
+
+
+```
+
+#seniority of authors
+- max h-index between first and last author the year of publication
+- Seniority is operationalised as the maximum h-index of the first and last
+author of the original study. The h-index is computed year-by-year using
+Scopus: for a given target year, we identify all papers published by
+the author up to that year and count citations each paper received up
+to that year.
+
+```{r seniority-helpers}
+Skey <- Sys.getenv("SCOPUS_API_KEY")
+
+# --- Scopus Search with start/count pagination ---
+# (cursor pagination is restricted for AU-ID and some other queries)
+scopus_search_paged <- function(query, api_key, count = 25, view = "STANDARD",
+                                wait_time = 0.25, max_records = Inf) {
+  out <- list()
+  start <- 0L
+  n_total <- 0L
+
+  repeat {
+    r <- httr::GET(
+      "https://api.elsevier.com/content/search/scopus",
+      query = list(
+        query  = query,
+        count  = count,
+        start  = start,
+        view   = view,
+        APIKey = api_key
+      )
+    )
+    httr::stop_for_status(r)
+
+    res <- jsonlite::fromJSON(
+      httr::content(r, as = "text", encoding = "UTF-8"), flatten = TRUE
+    )
+    sr <- res[["search-results"]]
+    total_available <- as.integer(sr[["opensearch:totalResults"]])
+
+    entries <- sr[["entry"]]
+    if (is.null(entries) || length(entries) == 0) break
+    if (is.data.frame(entries) && "error" %in% names(entries)) break
+
+    df <- tibble::as_tibble(entries) |>
+      # Coerce any list columns to character to ensure consistent types
+      # across pages — Scopus sometimes returns scalars and sometimes
+      # vectors for fields like freetoread.value
+      dplyr::mutate(
+        dplyr::across(
+          dplyr::where(is.list),
+          ~ purrr::map_chr(.x, function(v) {
+            if (is.null(v) || length(v) == 0) NA_character_
+            else paste(unlist(v), collapse = "; ")
+          })
+        )
+      )
+
+    out[[length(out) + 1]] <- df
+    n_total <- n_total + nrow(df)
+
+    if (n_total >= max_records || n_total >= total_available) break
+    start <- n_total
+    Sys.sleep(wait_time)
+  }
+
+  dplyr::bind_rows(out)
+}
+
+# --- Resolve Scopus AU-ID for an OpenAlex author ---
+# Finds a paper where the author appears as first author via OpenAlex,
+# then looks that paper up in Scopus to get the AU-ID. More reliable than
+# FIRSTAUTH(surname) which can match the wrong person for common names.
+find_scopus_auid <- function(oa_author_id, author_name, api_key, wait = 0.25) {
+  # Step 1: Find a paper where this author is first author via OpenAlex
+  oa_id <- sub("https://openalex.org/", "", oa_author_id)
+  r_oa <- httr::GET(
+    sprintf(
+      "https://api.openalex.org/works?filter=author.id:%s&per_page=20&sort=cited_by_count:desc",
+      oa_id
+    ),
+    httr::add_headers(Accept = "application/json")
+  )
+  Sys.sleep(wait)
+  if (httr::status_code(r_oa) != 200) return(NULL)
+
+  works <- httr::content(r_oa, as = "parsed", type = "application/json")$results
+  if (length(works) == 0) return(NULL)
+
+  # Pick a work where this author is first author (or earliest in list)
+  target_doi <- NULL
+  for (w in works) {
+    if (is.null(w$doi)) next
+    first_au <- w$authorships[[1]]$author
+    if (grepl(sub(".* ", "", author_name), first_au$display_name, ignore.case = TRUE)) {
+      target_doi <- sub("https://doi.org/", "", w$doi)
+      break
+    }
+  }
+
+  # Fallback: just use any work — the author should appear in the list
+  if (is.null(target_doi) && length(works) > 0 && !is.null(works[[1]]$doi)) {
+    target_doi <- sub("https://doi.org/", "", works[[1]]$doi)
+  }
+
+  if (is.null(target_doi)) return(NULL)
+
+  # Step 2: Look up that DOI in Scopus to get author list with AU-IDs
+  r_sc <- httr::GET(
+    "https://api.elsevier.com/content/search/scopus",
+    query = list(
+      query  = sprintf("DOI(%s)", target_doi),
+      count  = 1,
+      field  = "author",
+      APIKey = api_key
+    )
+  )
+  Sys.sleep(wait)
+  if (httr::status_code(r_sc) != 200) return(NULL)
+
+  parsed <- httr::content(r_sc, as = "parsed", type = "application/json")
+  authors <- parsed[["search-results"]][["entry"]][[1]][["author"]]
+  if (is.null(authors) || length(authors) == 0) return(NULL)
+
+  # Match by surname
+  surname <- sub(".* ", "", author_name)
+  for (a in authors) {
+    if (grepl(surname, a[["surname"]] %||% a[["authname"]], ignore.case = TRUE)) {
+      return(list(au_id = a[["authid"]], name = a[["authname"]]))
+    }
+  }
+  NULL
+}
+
+# --- Get first/last author Scopus AU-IDs from a paper's DOI ---
+#
+# TODO: With FULL-view entitlement on the Scopus Abstract Retrieval API,
+# this function can be simplified significantly. The FULL view
+# (GET /content/abstract/doi/{doi}?view=FULL) returns:
+#   - The complete author list (no 100-author cap) with AU-IDs and @seq
+#   - Correspondence info (ce:correspondence) identifying the
+#     corresponding author
+# With that access:
+#   1. Replace the Scopus Search field=author call with Abstract Retrieval
+#      view=FULL
+#   2. Extract first (@seq=1) and last (max @seq) author AU-IDs directly
+#      — no truncation, no OpenAlex fallback needed
+#   3. For consortium papers where first/last is meaningless, use the
+#      corresponding author from ce:correspondence instead
+#   4. The find_scopus_auid() helper and the entire OpenAlex fallback
+#      block can be removed
+#
+# Current approach (standard API key, no FULL view):
+# Uses Scopus Search with field=author (capped at 100 authors). For
+# mega-authored papers, uses abstract_retrieval from Scopus API for the true last
+# author
+get_fl_author_ids <- function(doi, api_key, wait = 0.25) {
+  
+  ab <- tryCatch({
+    res <- rscopus::abstract_retrieval(
+      id         = doi,
+      identifier = "doi",
+      api_key    = api_key
+    )
+    Sys.sleep(wait)
+    res$content
+  }, error = function(e) {
+    message("abstract_retrieval failed for DOI: ", doi, " — ", e$message)
+    NULL
+  })
+  
+  if (is.null(ab)) return(NULL)
+
+  # Flatten content list to tibble via JSON round-trip
+  authors_sc <- tryCatch({
+    list(ab) |>
+      jsonlite::toJSON(auto_unbox = TRUE, null = "null") |>
+      jsonlite::fromJSON(flatten = TRUE) |>
+      tibble::as_tibble()
+  }, error = function(e) {
+    message("JSON flattening failed for DOI: ", doi, " — ", e$message)
+    NULL
+  })
+  
+  if (is.null(authors_sc)) return(NULL)
+
+  # Unnest author list and grab first and last rows
+  result <- tryCatch({
+    authors_sc |>
+      tidyr::unnest(`abstracts-retrieval-response.authors.author`) |>
+      dplyr::select(
+        name  = `ce:indexed-name`,
+        au_id = `@auid`
+      ) |>
+      dplyr::slice(c(1, dplyr::n())) |>
+      dplyr::mutate(position = c("first", "last"))
+  }, error = function(e) {
+    message("Author extraction failed for DOI: ", doi, " — ", e$message)
+    NULL
+  })
+
+  result
+}
+
+# --- Get all publications by an author (start-based pagination) --- 
+
+get_author_pubs <- function(au_id, api_key, wait = 0.25) { 
+  pubs <- scopus_search_paged( 
+    query = sprintf("AU-ID(%s)", au_id), 
+    api_key = api_key, 
+    count = 25, 
+    view = "STANDARD", 
+    wait_time = wait ) 
+  
+  if (is.null(pubs) || nrow(pubs) == 0) return(tibble::tibble()) 
+  cover_date <- if ("prism:coverDate" %in% names(pubs)) { 
+    pubs[["prism:coverDate"]] 
+  } else if ("prism.coverDate" %in% names(pubs)) { 
+      pubs[["prism.coverDate"]] 
+  } else NA_character_ 
+  
+  cited_by <- if ("citedby-count" %in% names(pubs)) { 
+    pubs[["citedby-count"]] 
+  } else if ("citedby.count" %in% names(pubs)) { 
+      pubs[["citedby.count"]] 
+  } else "0" 
+  
+  tibble::tibble( 
+    eid = pubs$eid, 
+    pub_year = as.integer(substr(cover_date, 1, 4)), 
+    cited_by = as.integer(cited_by) ) |> 
+    dplyr::filter(!is.na(pub_year)) |> 
+    dplyr::arrange(dplyr::desc(cited_by)) 
+  } 
+
+
+# --- Get citation count for a paper up to a given year ---
+# Uses REFEID + PUBYEAR filter; only reads totalResults (no data transfer)
+get_cites_before_year <- function(eid, year, api_key, wait = 0.25) {
+  r <- httr::GET(
+    "https://api.elsevier.com/content/search/scopus",
+    query = list(
+      query  = sprintf("REFEID(%s) AND PUBYEAR < %d", eid, year + 1),
+      count  = 1,
+      view   = "STANDARD",
+      APIKey = api_key
+    )
+  )
+  Sys.sleep(wait)
+
+  if (httr::status_code(r) != 200) return(NA_integer_)
+
+  parsed <- httr::content(r, as = "parsed", type = "application/json")
+  as.integer(parsed[["search-results"]][["opensearch:totalResults"]])
+}
+
+# --- Calculate h-index from a vector of citation counts ---
+compute_h_index <- function(citation_counts) {
+  if (length(citation_counts) == 0) return(0L)
+  sorted <- sort(citation_counts, decreasing = TRUE)
+  h <- 0L
+  for (i in seq_along(sorted)) {
+    if (sorted[i] >= i) h <- i else break
+  }
+  as.integer(h)
+}
+
+# --- Compute h-index time-series for one author ---
+# Iterative approach: process papers in descending order of current citations.
+# Current citations are an upper bound on historical citations, so once the
+# next paper's current count < h+1, no remaining paper can increase h.
+# This avoids querying every paper while remaining exact.
+author_h_index_series <- function(au_id, api_key, target_years, wait = 0.25) {
+  message("  Fetching publications for AU-ID ", au_id)
+  pubs <- get_author_pubs(au_id, api_key, wait = wait)
+
+  if (nrow(pubs) == 0) {
+    return(tibble::tibble(year = target_years, h_index = 0L))
+  }
+
+  pubs <- pubs |> dplyr::filter(pub_year <= max(target_years))
+  message("    ", nrow(pubs), " publications up to ", max(target_years))
+
+  purrr::map_dfr(target_years, function(yr) {
+    eligible <- pubs |>
+      dplyr::filter(pub_year <= yr) |>
+      dplyr::arrange(dplyr::desc(cited_by))
+
+    if (nrow(eligible) == 0) return(tibble::tibble(year = yr, h_index = 0L))
+
+    counts <- integer(0)
+    h <- 0L
+    n_queried <- 0L
+
+    for (i in seq_len(nrow(eligible))) {
+      # Current citations are an upper bound on citations at year yr.
+      # If this paper's current count < h+1, it and all remaining papers
+      # (sorted desc) cannot increase h — stop early.
+      if (eligible$cited_by[i] < h + 1L) break
+
+      c_yr <- get_cites_before_year(eligible$eid[i], yr, api_key, wait = wait)
+      counts <- c(counts, c_yr)
+      h <- compute_h_index(counts)
+      n_queried <- n_queried + 1L
+    }
+
+    message("    Year ", yr, ": h = ", h,
+            " (queried ", n_queried, "/", nrow(eligible), " eligible papers)")
+    tibble::tibble(year = yr, h_index = h)
+  })
+}
+
+# --- Compute seniority for one replication across target years ---
+# Uses the replication DOI to identify first/last author, then
+# computes their h-index trajectories. Seniority = max(h_first, h_last).
+compute_seniority <- function(doi_r, replication_year, api_key, wait = 0.25) {
+  target_years <- replication_year:(replication_year + 10)
+  
+  print(doi_r)
+  print(typeof(doi_r))
+  print(class(doi_r))
+
+  message("=== DOI_r: ", doi_r, " (rep year ", replication_year, ") ===")
+  authors <- get_fl_author_ids(doi_r, api_key, wait = wait)
+
+ if (is.null(authors) || !is.data.frame(authors)) {
+  warning("Skipping DOI due to missing author data: ", doi_r)
+
+  return(tibble::tibble(
+    doi_r     = doi_r,
+    year      = target_years,
+    h_first   = NA_integer_,
+    h_last    = NA_integer_,
+    seniority = NA_integer_
+  ))
+}
+
+  message("  Authors: ", paste(authors$name, collapse = " | "))
+
+  h_list <- purrr::map(
+    seq_len(nrow(authors)),
+    function(j) {
+      author_h_index_series(
+        authors$au_id[j], api_key, target_years, wait = wait
+      )
+    }
+  )
+  names(h_list) <- authors$position
+
+  result <- tibble::tibble(doi_r = doi_r, year = target_years)
+  result$h_first <- h_list[["first"]]$h_index
+
+  if ("last" %in% names(h_list)) {
+    result$h_last <- h_list[["last"]]$h_index
+  } else {
+    result$h_last <- result$h_first
+  }
+
+  result$seniority <- pmax(result$h_first, result$h_last, na.rm = TRUE)
+  result
+}
+```
+
+#Open Alex pathway
+
+```{r seniority-helpers-oa}
+# =========================================================================
+# OpenAlex-only path (no Scopus dependency)
+# =========================================================================
+# Uses OpenAlex for author identification, publication lists, AND citation
+# counts. Citation counts per year are derived from the `counts_by_year`
+# field returned inline with each work, so no extra API calls are needed
+# beyond fetching the author's publication list.
+#
+# Year-specific citation count for a paper:
+#   cites_up_to_Y = cited_by_count - sum(counts_by_year[year > Y])
+# This is exact as long as cited_by_count == sum over all years.
+
+# --- Normalise an author name into (surname, initials) for matching ---
+# "Richard A. Klein" → ("klein", "r a")
+# "Klein, R.A."      → ("klein", "r a")
+# "R A Klein"        → ("klein", "r a")
+# "RICHARD KLEIN"    → ("klein", "r")
+normalise_author_name <- function(raw_name) {
+  x <- tolower(trimws(raw_name))
+
+  # Detect "surname, given" format before stripping punctuation
+  if (grepl(",", x)) {
+    parts <- strsplit(x, " *, *")[[1]]
+    surname <- trimws(parts[1])
+    given   <- trimws(paste(parts[-1], collapse = " "))
+  } else {
+    tokens <- strsplit(x, "[ .]+")[[1]]
+    tokens <- tokens[tokens != ""]
+    surname <- tokens[length(tokens)]
+    given   <- paste(tokens[-length(tokens)], collapse = " ")
+  }
+
+  # Clean remaining punctuation from surname/given
+  surname <- gsub("[^a-z -]", "", surname)
+  given   <- gsub("[^a-z -]", "", given)
+
+  # Reduce given names to initials: "richard anthony" → "r a"
+  given_tokens <- strsplit(given, "[ -]+")[[1]]
+  given_tokens <- given_tokens[given_tokens != ""]
+  initials <- paste(substr(given_tokens, 1, 1), collapse = " ")
+
+  list(surname = surname, initials = initials)
+}
+
+# --- Check if two author names actively conflict ---
+# Returns TRUE when the names are clearly different people:
+# the surname matches but the initials positively disagree (e.g.,
+# "R A" vs "R B", or "J" vs "R"). Names that merely lack detail
+# (e.g., "R Klein" vs "R A Klein") are NOT considered conflicts.
+names_conflict <- function(name_a, name_b) {
+  if (is.na(name_a) || name_a == "" ||
+      is.na(name_b) || name_b == "") return(FALSE)
+  a <- normalise_author_name(name_a)
+  b <- normalise_author_name(name_b)
+
+  if (a$surname != b$surname) return(TRUE)
+
+  init_a <- strsplit(a$initials, " ")[[1]]
+  init_b <- strsplit(b$initials, " ")[[1]]
+
+  # Compare over the length of the shorter initial string
+  n <- min(length(init_a), length(init_b))
+  if (n == 0) return(FALSE)  # No initials to compare — no conflict
+
+  # Conflict if any shared position disagrees
+  any(init_a[1:n] != init_b[1:n])
+}
+
+# --- Check if a publication name confirms the known name ---
+# Returns TRUE when the initials on the publication are at least as
+# specific as the known name. If the known name has a middle initial
+# (e.g., "Richard A. Klein"), a publication listing just "R. Klein"
+# does NOT confirm — we can't tell if it's the same person.
+# Used for the strict filtering strategy.
+names_confirm <- function(known_name, pub_name) {
+  if (is.na(known_name) || known_name == "" ||
+      is.na(pub_name) || pub_name == "") return(TRUE)
+  known <- normalise_author_name(known_name)
+  pub   <- normalise_author_name(pub_name)
+
+  if (known$surname != pub$surname) return(FALSE)
+
+  init_known <- strsplit(known$initials, " ")[[1]]
+  init_pub   <- strsplit(pub$initials, " ")[[1]]
+
+  # The publication must have at least as many initials as the known name
+  if (length(init_pub) < length(init_known)) return(FALSE)
+
+  # And they must all match
+  n <- length(init_known)
+  if (n == 0) return(TRUE)
+
+  all(init_known[1:n] == init_pub[1:n])
+}
+
+# --- Get first/last author OpenAlex IDs from a paper's DOI ---
+# Also returns raw_author_name for downstream name-matching against
+# the author's publication list (guards against OpenAlex profile merges).
+get_fl_author_ids_oa <- function(doi, wait = 0.5) {
+  r <- httr::GET(
+    sprintf("https://api.openalex.org/works/doi:%s", doi),
+    httr::add_headers(Accept = "application/json")
+  )
+  Sys.sleep(wait)
+
+  if (httr::status_code(r) != 200) {
+    warning("OpenAlex lookup failed for DOI ", doi,
+            " (HTTP ", httr::status_code(r), ")")
+    return(NULL)
+  }
+
+  parsed <- httr::content(r, as = "parsed", type = "application/json")
+  auths <- parsed$authorships
+  if (is.null(auths) || length(auths) == 0) {
+    warning("No authors found for DOI ", doi)
+    return(NULL)
+  }
+
+  positions <- sapply(auths, function(a) a$author_position)
+  first_idx <- which(positions == "first")
+  last_idx  <- which(positions == "last")
+
+  if (length(first_idx) == 0) {
+    warning("No first author for DOI ", doi)
+    return(NULL)
+  }
+
+  rows <- list()
+  rows[[1]] <- list(
+    position        = "first",
+    oa_id           = auths[[first_idx[1]]]$author$id,
+    name            = auths[[first_idx[1]]]$author$display_name,
+    raw_author_name = auths[[first_idx[1]]]$raw_author_name %||% NA_character_
+  )
+
+  if (length(last_idx) > 0) {
+    rows[[2]] <- list(
+      position        = "last",
+      oa_id           = auths[[last_idx[1]]]$author$id,
+      name            = auths[[last_idx[1]]]$author$display_name,
+      raw_author_name = auths[[last_idx[1]]]$raw_author_name %||% NA_character_
+    )
+  }
+
+  dplyr::bind_rows(lapply(rows, tibble::as_tibble)) |>
+    dplyr::distinct(oa_id, .keep_all = TRUE)
+}
+
+# --- Get all publications by an author with citation data ---
+# Fetches authorships alongside citation data so that each publication's
+# raw_author_name can be checked against the known name from the target
+# paper. This guards against OpenAlex profile merges where multiple
+# people share a profile. Only papers with an actively conflicting name
+# (different initials) that were also published implausibly early
+# (>70 years before the target paper) are dropped.
+get_author_pubs_oa <- function(oa_author_id, known_raw_name = NA_character_,
+                               ref_year = NA_integer_, wait = 0.5) {
+  oa_id <- sub("https://openalex.org/", "", oa_author_id)
+  out <- list()
+  cursor <- "*"
+
+  repeat {
+    r <- httr::GET(
+      "https://api.openalex.org/works",
+      query = list(
+        filter   = sprintf("author.id:%s", oa_id),
+        per_page = 200,
+        cursor   = cursor,
+        select   = "doi,publication_year,cited_by_count,counts_by_year,authorships"
+      ),
+      httr::add_headers(Accept = "application/json")
+    )
+    Sys.sleep(wait)
+
+    if (httr::status_code(r) != 200) break
+
+    parsed <- httr::content(r, as = "parsed", type = "application/json")
+    results <- parsed$results
+    if (length(results) == 0) break
+
+    batch <- purrr::map_dfr(results, function(w) {
+      cby <- w$counts_by_year
+      cby_df <- if (length(cby) > 0) {
+        purrr::map_dfr(cby, function(e) {
+          tibble::tibble(year = e$year, n = e$cited_by_count)
+        })
+      } else {
+        tibble::tibble(year = integer(), n = integer())
+      }
+
+      # Extract raw_author_name for the matched author on this paper
+      raw_name <- NA_character_
+      for (a in w$authorships) {
+        if (identical(a$author$id, paste0("https://openalex.org/", oa_id))) {
+          raw_name <- a$raw_author_name %||% NA_character_
+          break
+        }
+      }
+
+      tibble::tibble(
+        doi              = sub("https://doi.org/", "", w$doi %||% NA_character_),
+        publication_year = w$publication_year %||% NA_integer_,
+        cited_by_count   = w$cited_by_count %||% 0L,
+        counts_by_year   = list(cby_df),
+        raw_author_name  = raw_name
+      )
+    })
+
+    out[[length(out) + 1]] <- batch
+
+    cursor <- parsed$meta$next_cursor
+    if (is.null(cursor) || cursor == "") break
+  }
+
+  result <- dplyr::bind_rows(out) |>
+    dplyr::filter(!is.na(publication_year)) |>
+    dplyr::arrange(dplyr::desc(cited_by_count))
+
+  # Guard against OpenAlex profile merges using two filtering strategies.
+  # Both are applied; the caller chooses which filtered set to use via
+  # the `pubs_conservative` and `pubs_strict` columns added below.
+  #
+  # Strategy 1 (conservative): drop papers published >60 years before
+  #   the reference year — these are implausibly old regardless of name.
+  # Strategy 2 (strict): additionally drop papers where the
+  #   raw_author_name actively conflicts with the known name (different
+  #   initials), regardless of age.
+
+  result$keep_conservative <- TRUE
+  result$keep_strict       <- TRUE
+
+  if (!is.na(ref_year)) {
+    result$keep_conservative <- result$publication_year >= (ref_year - 60)
+  }
+
+  if (!is.na(known_raw_name)) {
+    # Strict: require the publication's raw name to positively confirm
+    # the known name (matching surname + at least as many initials).
+    # "Richard A. Klein" on the target paper means "R. Klein" on a
+    # publication is ambiguous and gets dropped.
+    result$keep_strict <- result$keep_conservative &
+      purrr::map_lgl(result$raw_author_name, function(rn) {
+        if (is.na(rn)) return(FALSE)
+        names_confirm(known_raw_name, rn)
+      })
+  }
+
+  n_drop_cons <- sum(!result$keep_conservative)
+  n_drop_strict <- sum(!result$keep_strict)
+  if (n_drop_cons > 0 || n_drop_strict > 0) {
+    message("    Profile cleaning: conservative drops ", n_drop_cons,
+            ", strict drops ", n_drop_strict, " of ", nrow(result))
+  }
+
+  result
+}
+
+# --- Derive citations up to year Y from OpenAlex inline data ---
+cites_up_to_year_oa <- function(cited_by_count, counts_by_year_df, year) {
+  future_cites <- sum(counts_by_year_df$n[counts_by_year_df$year > year],
+                      na.rm = TRUE)
+  max(0L, as.integer(cited_by_count - future_cites))
+}
+
+# --- Compute h-index for a subset of publications at a set of years ---
+# Helper used by both conservative and strict strategies.
+.compute_h_series <- function(pubs, target_years) {
+  purrr::map_dfr(target_years, function(yr) {
+    eligible <- pubs |>
+      dplyr::filter(publication_year <= yr) |>
+      dplyr::arrange(dplyr::desc(cited_by_count))
+
+    if (nrow(eligible) == 0) return(tibble::tibble(year = yr, h_index = 0L))
+
+    counts <- integer(0)
+    h <- 0L
+
+    for (i in seq_len(nrow(eligible))) {
+      if (eligible$cited_by_count[i] < h + 1L) break
+      c_yr <- cites_up_to_year_oa(
+        eligible$cited_by_count[i],
+        eligible$counts_by_year[[i]],
+        yr
+      )
+      counts <- c(counts, c_yr)
+      h <- compute_h_index(counts)
+    }
+
+    tibble::tibble(year = yr, h_index = h)
+  })
+}
+
+# --- Compute h-index time-series for one author (OpenAlex path) ---
+# Returns h-index under both filtering strategies:
+#   h_conservative: only papers within 60 years of reference year
+#   h_strict: conservative + name-matching filter
+author_h_index_series_oa <- function(oa_author_id, target_years,
+                                     known_raw_name = NA_character_,
+                                     ref_year = NA_integer_, wait = 0.5) {
+  message("  Fetching publications for ", oa_author_id)
+  pubs <- get_author_pubs_oa(oa_author_id, known_raw_name = known_raw_name,
+                             ref_year = ref_year, wait = wait)
+
+  if (nrow(pubs) == 0) {
+    return(tibble::tibble(year = target_years,
+                          h_conservative = 0L, h_strict = 0L))
+  }
+
+  pubs <- pubs |> dplyr::filter(publication_year <= max(target_years))
+
+  pubs_cons   <- pubs |> dplyr::filter(keep_conservative)
+  pubs_strict <- pubs |> dplyr::filter(keep_strict)
+
+  message("    Publications up to ", max(target_years), ": ",
+          nrow(pubs_cons), " (conservative), ",
+          nrow(pubs_strict), " (strict)")
+
+  h_cons   <- .compute_h_series(pubs_cons, target_years)
+  h_strict <- .compute_h_series(pubs_strict, target_years)
+
+  tibble::tibble(
+    year           = target_years,
+    h_conservative = h_cons$h_index,
+    h_strict       = h_strict$h_index
+  )
+}
+
+# --- Compute seniority for one replication (OpenAlex path) ---
+# Returns both filtering strategies:
+#   seniority_conservative: only drop papers >60 years before ref year
+#   seniority_strict: also drop papers with conflicting author initials
+compute_seniority_oa <- function(doi_r, replication_year, wait = 0.5) {
+  target_years <- replication_year:(replication_year + 10)
+
+  message("=== DOI_r: ", doi_r, " (rep year ", replication_year, ") ===")
+  authors <- get_fl_author_ids_oa(doi_r, wait = wait)
+
+  if (is.null(authors)) {
+    return(tibble::tibble(
+      doi_r = doi_r, year = target_years,
+      h_first_conservative = NA_integer_, h_first_strict = NA_integer_,
+      h_last_conservative  = NA_integer_, h_last_strict  = NA_integer_,
+      seniority_conservative = NA_integer_, seniority_strict = NA_integer_
+    ))
+  }
+
+  message("  Authors: ", paste(authors$name, collapse = " | "),
+          " [raw: ", paste(authors$raw_author_name, collapse = " | "), "]")
+
+  h_list <- purrr::map(
+    seq_len(nrow(authors)),
+    function(j) {
+      author_h_index_series_oa(
+        authors$oa_id[j], target_years,
+        known_raw_name = authors$raw_author_name[j],
+        ref_year       = replication_year,
+        wait           = wait
+      )
+    }
+  )
+  names(h_list) <- authors$position
+
+  result <- tibble::tibble(doi_r = doi_r, year = target_years)
+
+  result$h_first_conservative <- h_list[["first"]]$h_conservative
+  result$h_first_strict       <- h_list[["first"]]$h_strict
+
+  if ("last" %in% names(h_list)) {
+    result$h_last_conservative <- h_list[["last"]]$h_conservative
+    result$h_last_strict       <- h_list[["last"]]$h_strict
+  } else {
+    result$h_last_conservative <- result$h_first_conservative
+    result$h_last_strict       <- result$h_first_strict
+  }
+
+  result$seniority_conservative <- pmax(result$h_first_conservative,
+                                        result$h_last_conservative,
+                                        na.rm = TRUE)
+  result$seniority_strict       <- pmax(result$h_first_strict,
+                                        result$h_last_strict,
+                                        na.rm = TRUE)
+  result
+}
+```
+#Compute seniority
+
+```{r seniority-test, eval=TRUE}
+
+# ------------------------------------------------------------------
+# Compute seniority
+# ------------------------------------------------------------------
+# Determine cache file and column name based on data_source
+cache_file   <- if (data_source == "Scopus") "data/seniority_scopus.rds" else "data/seniority_oc.rds"
+seniority_col <- if (data_source == "Scopus") "seniority" else "seniority_strict"
+
+# Load existing cache if it exists
+if (file.exists(cache_file)) {
+  seniority_cache <- readRDS(cache_file)
+} else {
+  seniority_cache <- tibble()
+}
+
+# Identify rows needing computation (DOI absent from cache)
+if (nrow(seniority_cache) > 0) {
+  mods_to_query <- mods %>% filter(!doi_r %in% seniority_cache$doi_r)
+} else {
+  mods_to_query <- mods
+}
+mods_to_query <- mods_to_query %>%
+  distinct(doi_r, publication_year_r, .keep_all = FALSE)
+
+# Run compute functions only on uncached rows
+if (nrow(mods_to_query) > 0) {
+  
+  new_results <- if (data_source == "Scopus") {
+    
+    purrr::map_dfr(
+      seq_len(nrow(mods_to_query)),
+      function(i) {
+        compute_seniority(
+          doi_r            = mods_to_query$doi_r[i],
+          replication_year = mods_to_query$publication_year_r[i],
+          api_key          = Skey,
+          wait             = 0.25
+        )
+      },
+      .progress = TRUE
+    )
+    
+  } else if (data_source == "OC") {
+    
+    purrr::map2_dfr(
+      mods_to_query$doi_r,
+      mods_to_query$publication_year_r,
+      ~ compute_seniority_oa(
+          doi_r            = .x,
+          replication_year = .y,
+          wait             = 0.5
+        ),
+      .progress = TRUE
+    )
+    
+  } else {
+    stop("data_source must be 'Scopus' or 'OC'")
+  }
+  
+  # Append to cache and save
+  seniority_cache <- bind_rows(seniority_cache, new_results)
+  saveRDS(seniority_cache, cache_file)
+  message(nrow(mods_to_query), " DOIs queried and cached to ", cache_file)
+  
+} else {
+  message("All DOIs already cached — no API calls needed.")
+}
+
+# Join to mods
+mods <- mods %>%
+  left_join(
+    seniority_cache %>%
+      select(doi_r, year, seniority = all_of(seniority_col)),
+    by = c("doi_r" = "doi_r", "publication_year_r" = "year")
+  )
+ 
+# #one doi
+# test_doi <- mods %>% slice(1, 9, 20)
+# test <- purrr::map_dfr(
+#   seq_len(nrow(test_doi)),
+#   function(i) {
+#     compute_seniority(
+#       doi_r            = test_doi$doi_r[i],
+#       replication_year = test_doi$publication_year_r[i],
+#       api_key          = Skey,
+#       wait             = 0.25
+#     )
+#   }
+# )
+
+```
+
+```{r}
+
+ggplot(mods, aes(x = publication_year_r, y = seniority, colour = doi_r)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Year", y = "Seniority (max h-index, first/last author)",
+       colour = "Original DOI") +
+  theme_minimal()
+```
+# a version of get_fl_author_ids that errors out, 
+```{r}
+# get_fl_author_ids <- function(doi, api_key, wait = 0.25) {
+#   
+#   # ------------------------------------------------------------------
+#   # Step 1: Scopus Search API — lightweight, only fetches author field
+#   # ------------------------------------------------------------------
+#   r <- httr::GET(
+#     "https://api.elsevier.com/content/search/scopus",
+#     query = list(
+#       query  = sprintf("DOI(%s)", doi),
+#       count  = 1,
+#       field  = "author",
+#       APIKey = api_key
+#     )
+#   )
+#   Sys.sleep(wait)
+#   
+#   if (httr::status_code(r) != 200) {
+#     message("Scopus Search failed for DOI: ", doi,
+#             " (HTTP ", httr::status_code(r), ")")
+#     return(NULL)
+#   }
+#   
+#   parsed  <- httr::content(r, as = "parsed", type = "application/json")
+#   entries <- parsed[["search-results"]][["entry"]]
+#   
+#   if (is.null(entries) || length(entries) == 0) {
+#     message("No Scopus Search results for DOI: ", doi)
+#     return(NULL)
+#   }
+#   
+#   authors <- entries[[1]][["author"]]
+#   if (is.null(authors) || length(authors) == 0) {
+#     message("No authors in Scopus Search result for DOI: ", doi)
+#     return(NULL)
+#   }
+#   
+#   # ------------------------------------------------------------------
+#   # Step 2: Check for truncation — if < 100 authors, search result is
+#   # complete and we can use it directly
+#   # ------------------------------------------------------------------
+#   if (length(authors) < 100) {
+#     message("Using Scopus Search path for DOI: ", doi,
+#             " (", length(authors), " authors)")
+#     
+#     # Sort by @seq to ensure correct order
+#     seqs <- sapply(authors, function(a) {
+#       s <- a[["@seq"]]
+#       if (is.null(s)) NA_integer_ else as.integer(s)
+#     })
+#     if (all(is.na(seqs))) seqs <- seq_along(authors)
+#     authors <- authors[order(seqs)]
+#     
+#     return(tibble::tibble(
+#       position = c("first", "last"),
+#       au_id    = c(authors[[1]][["@auid"]],
+#                    authors[[length(authors)]][["@auid"]]),
+#       name     = c(authors[[1]][["authname"]],
+#                    authors[[length(authors)]][["authname"]])
+#     ))
+#   }
+#   
+#   # ------------------------------------------------------------------
+#   # Step 3: >100 authors — fall back to abstract_retrieval for the
+#   # true last author
+#   # ------------------------------------------------------------------
+#   message("Using abstract_retrieval fallback for DOI: ", doi,
+#           " (>=100 authors in search result)")
+#   
+#   ab <- tryCatch({
+#     res <- rscopus::abstract_retrieval(
+#       id         = doi,
+#       identifier = "doi",
+#       api_key    = api_key
+#     )
+#     Sys.sleep(wait)
+#     res$content
+#   }, error = function(e) {
+#     message("abstract_retrieval failed for DOI: ", doi, " — ", e$message)
+#     NULL
+#   })
+#   
+#   if (is.null(ab)) return(NULL)
+#   
+#   authors_sc <- tryCatch({
+#     list(ab) |>
+#       jsonlite::toJSON(auto_unbox = TRUE, null = "null") |>
+#       jsonlite::fromJSON(flatten = TRUE) |>
+#       tibble::as_tibble()
+#   }, error = function(e) {
+#     message("JSON flattening failed for DOI: ", doi, " — ", e$message)
+#     NULL
+#   })
+#   
+#   if (is.null(authors_sc)) return(NULL)
+#   
+#   tryCatch({
+#     authors_sc |>
+#       tidyr::unnest(`abstracts-retrieval-response.authors.author`) |>
+#       dplyr::select(
+#         name  = `ce:indexed-name`,
+#         au_id = `@auid`
+#       ) |>
+#       dplyr::slice(c(1, dplyr::n())) |>
+#       dplyr::mutate(position = c("first", "last"))
+#   }, error = function(e) {
+#     message("Author extraction failed for DOI: ", doi, " — ", e$message)
+#     NULL
+#   })
+# }
+
+
+```
+#author overlap
+- for Scopus track do it through scopus, for OC track through OpenAlex
+```{r}
+#Scopus track
+get_all_authors <- function(dois, api_key, wait = 0.25,
+                            save_path = "data/all_authors.rds") {
+  
+  all_authors <- purrr::map_dfr(
+    dois,
+    function(doi) {
+      message("Fetching authors for DOI: ", doi)
+      
+      ab <- tryCatch({
+        res <- rscopus::abstract_retrieval(
+          id         = doi,
+          identifier = "doi",
+          api_key    = api_key
+        )
+        Sys.sleep(wait)
+        res$content
+      }, error = function(e) {
+        message("abstract_retrieval failed for DOI: ", doi, " — ", e$message)
+        NULL
+      })
+      
+      if (is.null(ab)) return(NULL)
+      
+      authors_sc <- tryCatch({
+        list(ab) |>
+          jsonlite::toJSON(auto_unbox = TRUE, null = "null") |>
+          jsonlite::fromJSON(flatten = TRUE) |>
+          tibble::as_tibble()
+      }, error = function(e) {
+        message("JSON flattening failed for DOI: ", doi, " — ", e$message)
+        NULL
+      })
+      
+      if (is.null(authors_sc)) return(NULL)
+      
+      tryCatch({
+        authors_sc |>
+          tidyr::unnest(`abstracts-retrieval-response.authors.author`) |>
+          dplyr::select(
+            name  = `ce:indexed-name`,
+            au_id = `@auid`
+          ) |>
+          dplyr::mutate(doi = doi)
+      }, error = function(e) {
+        message("Author extraction failed for DOI: ", doi, " — ", e$message)
+        NULL
+      })
+    },
+    .progress = TRUE
+  )
+  
+  if (!is.null(save_path)) {
+    dir.create(dirname(save_path), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(all_authors, save_path)
+    message("Saved full author list to ", save_path)
+  }
+  
+  all_authors
+}
+```
+#Open alex
+```{r}
+get_all_authors_oa <- function(dois, wait = 0.5,email = NULL,
+                               save_path = "data/all_authors_oa.rds") {
+  
+  all_authors <- purrr::map_dfr(
+    dois,
+    function(doi) {
+      message("Fetching authors for DOI: ", doi)
+      
+      r <- tryCatch({
+        res <- httr::GET(
+          sprintf("https://api.openalex.org/works/doi:%s", doi),
+          httr::add_headers(Accept = "application/json",
+                            `User-Agent` = email)
+        )
+        Sys.sleep(wait)
+        res
+      }, error = function(e) {
+        message("OpenAlex request failed for DOI: ", doi, " — ", e$message)
+        NULL
+      })
+      
+      if (is.null(r)) return(NULL)
+      
+      if (httr::status_code(r) != 200) {
+        message("OpenAlex lookup failed for DOI: ", doi,
+                " (HTTP ", httr::status_code(r), ")")
+        return(NULL)
+      }
+      
+      parsed <- httr::content(r, as = "parsed", type = "application/json")
+      auths  <- parsed$authorships
+      
+      if (is.null(auths) || length(auths) == 0) {
+        message("No authors found for DOI: ", doi)
+        return(NULL)
+      }
+      
+      tryCatch({
+        purrr::map_dfr(auths, function(a) {
+          tibble::tibble(
+            doi             = doi,
+            name            = a$author$display_name  %||% NA_character_,
+            au_id           = a$author$id             %||% NA_character_,
+            raw_author_name = a$raw_author_name       %||% NA_character_,
+            position        = a$author_position       %||% NA_character_,
+            sequence        = a$sequence              %||% NA_integer_
+          )
+        })
+      }, error = function(e) {
+        message("Author extraction failed for DOI: ", doi, " — ", e$message)
+        NULL
+      })
+    },
+    .progress = TRUE
+  )
+  
+  if (!is.null(save_path)) {
+    dir.create(dirname(save_path), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(all_authors, save_path)
+    message("Saved full author list to ", save_path)
+  }
+  
+  all_authors
+}
+
+
+```
+#run the author overlap function depending on data source
+```{r}
+email<- Sys.getenv("MY_EMAIL")
+# ------------------------------------------------------------------
+# Cache paths
+# ------------------------------------------------------------------
+suffix <- if (data_source == "Scopus") "scopus" else "oa"
+
+cache_path_r <- paste0("data/all_authors_r_", suffix, ".rds")
+cache_path_o <- paste0("data/all_authors_o_", suffix, ".rds")
+
+# ------------------------------------------------------------------
+# Helper: load cache and return DOIs not yet in it
+# ------------------------------------------------------------------
+dois_to_fetch <- function(dois, cache_path) {
+  if (file.exists(cache_path)) {
+    cached <- readRDS(cache_path)
+    setdiff(unique(dois[!is.na(dois)]), unique(cached$doi))
+  } else {
+    unique(dois[!is.na(dois)])
+  }
+}
+
+# ------------------------------------------------------------------
+# Helper: fetch only missing DOIs and merge into cache
+# ------------------------------------------------------------------
+update_author_cache <- function(dois, cache_path, data_source, api_key = NULL, email = NULL) {
+  missing_dois <- dois_to_fetch(dois, cache_path)
+  
+  if (length(missing_dois) == 0) {
+    message("All DOIs already cached in ", cache_path)
+    return(readRDS(cache_path))
+  }
+  
+  message(length(missing_dois), " new DOIs to fetch for ", cache_path)
+  
+  new_results <- if (data_source == "Scopus") {
+    get_all_authors(dois = missing_dois, api_key = api_key, save_path = NULL)
+  } else {
+    get_all_authors_oa(dois = missing_dois, email = email, save_path = NULL)
+  }
+  
+  # Merge with existing cache
+  updated <- if (file.exists(cache_path)) {
+    bind_rows(readRDS(cache_path), new_results)
+  } else {
+    new_results
+  }
+  
+  saveRDS(updated, cache_path)
+  updated
+}
+
+# ------------------------------------------------------------------
+# Fetch author lists (only uncached DOIs)
+# ------------------------------------------------------------------
+all_authors_r <- update_author_cache(
+  dois        = mods$doi_r,
+  cache_path  = cache_path_r,
+  data_source = data_source,
+  api_key     = Skey,
+  email       = email
+)
+
+all_authors_o <- update_author_cache(
+  dois        = mods$doi_o,
+  cache_path  = cache_path_o,
+  data_source = data_source,
+  api_key     = Skey,
+  email       = email
+)
+
+# ------------------------------------------------------------------
+# Find overlap — identical regardless of source
+# ------------------------------------------------------------------
+author_overlap <- df_meta |>
+  dplyr::select(doi_r, doi_o) |>
+  dplyr::left_join(
+    all_authors_r |> dplyr::select(doi_r = doi, au_id_r = au_id, name_r = name),
+    by = "doi_r",
+    relationship = "many-to-many"
+  ) |>
+  dplyr::left_join(
+    all_authors_o |> dplyr::select(doi_o = doi, au_id_o = au_id, name_o = name),
+    by = "doi_o",
+    relationship = "many-to-many"
+  ) |>
+  dplyr::mutate(is_overlap = au_id_r == au_id_o & !is.na(au_id_r) & !is.na(au_id_o)) |>
+  dplyr::group_by(doi_r, doi_o) |>
+  dplyr::summarise(
+    n_authors_r  = dplyr::n_distinct(au_id_r, na.rm = TRUE),
+    n_authors_o  = dplyr::n_distinct(au_id_o, na.rm = TRUE),
+    n_shared     = sum(is_overlap),
+    has_overlap  = any(is_overlap),
+    shared_names = list(unique(name_r[is_overlap])),
+    .groups      = "drop"
+  )
+
+# ------------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------------
+cat("Data source:", data_source, "\n")
+cat("Pairs with author overlap:   ", sum(author_overlap$has_overlap), "\n")
+cat("Pairs with no author overlap:", sum(!author_overlap$has_overlap), "\n")
+author_overlap |>
+  dplyr::filter(has_overlap) |>
+  dplyr::select(doi_r, doi_o, n_authors_r, n_authors_o, n_shared, shared_names)
+
+mods <- mods %>%
+  left_join(
+    author_overlap %>% select(doi_r, doi_o, has_overlap),
+    by = c("doi_o", "doi_r")
+  )
+```
+
+#publication strategy
+- 3 levels - published, unpublished, published as a meta-paper
+-meta paper - at least 3 originals associated with one doi_r
+```{r}
+
+replic_type <- meta_r %>% 
+   select(doi,type,host_organization_name) %>%
+   rename(doi_r=doi,type_r=type)
+mods <- mods %>% 
+  left_join(replic_type,by="doi_r")
+
+table(mods$type_r)
+mods %>% filter(type_r=="letter")
+mods$doi_r
+
+#assign 3 categories
+#bioarxiv,medarxiv,ssrn,zenodo,preprints.org,research square,philpapers (does not give dois), psycharchives, EconStor (does not assign doi), RePEc (does not have doi), SciELO Preprints, (F1000research and eLife might have both preprints and articles under same doi) 
+preprint_doi <- c("10.64898","10.48550","10.2139","10.5281","10.20944","10.21203","10.23668","10.1590")
+mods <- mods %>%
+  dplyr::group_by(doi_r) %>%
+  dplyr::mutate(
+    publication_strategy = dplyr::case_when(
+      any(type_r == "preprint") ~ "preprint",
+      any(stringr::str_detect(doi_r, paste(preprint_doi, collapse = "|"))) ~ "preprint",
+      any(stringr::str_detect(doi_r, "osf")) ~ "preprint",
+      dplyr::n_distinct(doi_o) <= 2 ~ "published",
+      dplyr::n_distinct(doi_o) >= 3 ~ "meta"
+    )
+  ) %>%
+  dplyr::ungroup()
+
+table(mods$publication_strategy)
+
+
+```
+#join the model 
+```{r}
+# add all the newly created moderators
+mods <- unique(mods)
+eff_long <- eff_long %>% 
+  left_join(mods,by=c("doi_o"))
+
+eff_long %>% arrange(doi_o)
+
+primary <- eff_long %>% filter(time >= (publication_year_r +1) & time <= (publication_year_r+5))
+
+primary %>% arrange(doi_o)
+```
+#age of replication
+```{r}
+primary$age_r <- primary$time - primary$publication_year_r
+
+table(primary$age_r)
+```
+#modifying the SNIP to account for missingness
+```{r}
+primary <- primary %>%
+  mutate(
+    snip_missing  = is.na(SNIP),
+    SNIP_centered = scale(SNIP, center = TRUE, scale = FALSE)[,1],
+    SNIP_centered = if_else(snip_missing, 0, SNIP_centered)
+  )
+table(primary$snip_missing)
+```
+#regression
+
+```{r}
+str(primary)
+primary <- primary %>%
+  mutate(across(
+    (where(is.logical) | where(is.character)) & !starts_with("doi"),
+    as.factor
+  ))
+
+
+#contrasts
+cat_vars <- c("publication_strategy", "is_oa", "subject_final","has_overlap")
+
+primary <- primary %>%
+  mutate(across(all_of(cat_vars), ~ {
+    f <- factor(.x)
+    contrasts(f) <- contr.sum(nlevels(f))
+    f
+  }))
+# model
+reg_model <- rma.mv(yi = att, V = sampling_var,
+              mods = ~ age_r + has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + subject_final,
+              random = ~ 1 | doi_o,
+              method = "REML", data = primary)
+#att ~ ~ age_r + has_overlap + same_journal + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
+summary(reg_model)
+reg_model$sigma2[2]
+
+# residuals / QQ
+z <- rstandard(reg_model)$z
+par(mfrow=c(1,2)); hist(z, main="Std residuals"); qqnorm(z); qqline(z, col="red")
+# Raw residuals
+res <- resid(reg_model)
+
+
+hist(res, main = "Histogram of residuals", xlab = "Residual", breaks = 20)
+plot(res)
+qqnorm(res); qqline(res, col = "red")
+```
+#metaCART - single tree for testing
+
+```{r}
+# 1) Fit metaCART
+str(primary)
+summary(primary)
+length(unique(primary$doi_o))
+
+summary(primary)
+# # # primary <- as.data.frame(primary)
+# # #
+# # #testing for errors:
+# # # vars <- c("age_r","same_journal","has_overlap", "publication_strategy", "is_oa", "seniority")
+# # #
+# # # for (v in vars) {
+# # #   cat("Testing:", v, "\n")
+# # #   tryCatch({
+# # #     fit <- metacart::REmrt(
+# # #       formula = as.formula(paste("att ~ ", v)),
+# # #       vi      = sampling_var,
+# # #       cp      = 0.05,
+# # #       nboot   = 10,
+# # #       data    = primary
+# # #     )
+# # #     cat("  OK\n")
+# # #   }, error = function(e) {
+# # #     cat("  ERROR:", e$message, "\n")
+# # #   })
+# # # }
+# #
+# table(primary$snip_missing)
+# 
+# #model
+# fit_tree <- metacart::REmrt(
+#   formula = att ~ age_r + seniority + subject_final, #+ same_journal +  has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + subject_final,
+#   vi  = sampling_var,
+#   cp        = 0.01,
+#   nboot=1000,
+#   data = primary
+# )
+# 
+# 
+# fit_tree <- metacart::REmrt(
+#   formula = att ~ age_r + publication_strategy + SNIP_centered + seniority + subject_final,
+#   vi  = sampling_var,
+#   cp        = 0.01,
+#   nboot=1000,
+#   data = primary
+# )
+# 
+# #
+# # #att ~ age_r + same_journal +  has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
+# # # results
+# summary(fit_tree)
+# print(fit_tree)
+# plot(fit_tree)             # tree with splits
+# 
+
+
+```
+#metaCART loop
+```{r}
+n_iter <- 5000
+tree_results <- vector("list", n_iter)
+
+set.seed(42)
+for (i in seq_len(n_iter)) {
+  
+  # Sample one timepoint per study
+  iter_data <- primary %>%
+    group_by(doi_o) %>%
+    slice_sample(n = 1) %>%
+    ungroup() %>%
+    as.data.frame()
+  
+  # Fit tree, catch errors
+  tree_results[[i]] <- tryCatch({
+    metacart::REmrt(
+      formula = att ~ age_r + SNIP_centered +snip_missing + has_overlap + same_journal+ is_oa+publication_strategy +  seniority  + subject_final ,
+      vi      = sampling_var,
+      cp      = 0.01,
+      nboot   = 50,   # reduced since we're iterating 5000 times
+      data    = iter_data
+    )
+  }, error = function(e) NULL)
+  
+  if (i %% 500 == 0) message("Iteration ", i, " of ", n_iter)
+}
+
+# Remove failed iterations
+n_failed <- sum(sapply(tree_results, is.null))
+message(n_failed, " iterations failed out of ", n_iter)
+tree_results_ok <- Filter(Negate(is.null), tree_results)
+#save model output
+saveRDS(tree_results_ok, 
+        file = paste0("models/metaCART_", data_source, "_", data_outcome, ".rds"))
+# ------------------------------------------------------------------
+# Summarise results
+# ------------------------------------------------------------------
+tree_results_ok[[1]]$tree
+# Helper: extract variable used at root split
+get_root_var <- function(fit) {
+  tryCatch({
+    if (is.null(fit$tree)) return(NA_character_)
+    tree <- fit$tree
+    # Find first actual split (mod is not NA)
+    splits <- tree[!is.na(tree$mod), ]
+    if (nrow(splits) == 0) return(NA_character_)
+    as.character(splits$mod[1])
+  }, error = function(e) NA_character_)
+}
+
+get_split_vars <- function(fit) {
+  tryCatch({
+    if (is.null(fit$tree)) return(NA_character_)
+    tree <- fit$tree
+    vars <- tree$mod[!is.na(tree$mod)]
+    if (length(vars) == 0) return(NA_character_)
+    as.character(vars)
+  }, error = function(e) NA_character_)
+}
+
+get_split_points <- function(fit, var) {
+  tryCatch({
+    if (is.null(fit$tree)) return(NULL)
+    tree <- fit$tree
+    rows <- tree[!is.na(tree$mod) & tree$mod == var, ]
+    if (nrow(rows) == 0) return(NULL)
+    # Extract numeric split point from string like "age_r < 2.55"
+    pts <- as.numeric(gsub(".*[<>]=?\\s*", "", rows$split))
+    pts[!is.na(pts)]
+  }, error = function(e) NULL)
+}
+
+
+# Moderator selection frequency (appeared anywhere in tree)
+
+all_split_vars <- unlist(lapply(tree_results_ok, get_split_vars))
+mod_frequency  <- sort(table(all_split_vars), decreasing = TRUE)
+
+# Root split frequency
+root_vars     <- sapply(tree_results_ok, get_root_var)
+root_frequency <- sort(table(root_vars), decreasing = TRUE)
+
+# Split point distributions for key moderators
+key_mods <- names(mod_frequency)[1:min(3, length(mod_frequency))]
+split_points <- lapply(setNames(key_mods, key_mods), function(v) {
+  pts <- unlist(lapply(tree_results_ok, get_split_points, var = v))
+  pts[!is.na(pts)]
+})
+
+# ------------------------------------------------------------------
+# Report
+# ------------------------------------------------------------------
+cat("\n=== Moderator selection frequency ===\n")
+print(mod_frequency / length(tree_results_ok))
+
+cat("\n=== Root split frequency ===\n")
+print(root_frequency / length(tree_results_ok))
+
+cat("\n=== Split point distributions ===\n")
+for (v in key_mods) {
+  cat("\n", v, ":\n", sep = "")
+  print(summary(split_points[[v]]))
+}
+
+```
+
+
+#explorative analysis for FreD
+```{r}
+#devtools::install_github("forrtproject/FReD")
+library(FReD)
+fred<-load_fred_data()
+colnames(fred)
+fred <- fred %>% filter(doi_o %in% primary$doi_o)
+fred <- fred %>% group_by(doi_o, doi_r) %>%
+  filter(any(!is.na(n_r)) & any(!is.na(n_o)))
+cat_vars <- c("publication_strategy", "is_oa", "subject_final","has_overlap")
+
+
+
+fred_summary <- fred %>%
+  group_by(doi_o, doi_r) %>%
+  summarise(
+    n_o      = max(n_o, na.rm = TRUE),
+    n_r      = max(n_r, na.rm = TRUE),
+    prereg_r = as.integer(any(!is.na(prereg_r) & prereg_r != "")),
+    .groups  = "drop"
+  )
+
+fred_analysis <- primary %>%
+  inner_join(fred_summary, by = c("doi_o", "doi_r"))
+
+fred_analysis$sq_N <- sqrt(fred_analysis$n_o/fred_analysis$n_r)
+
+fred_analysis <- fred_analysis %>%
+  mutate(across(
+    (where(is.logical) | where(is.character)) & !starts_with("doi"),
+    as.factor
+  ))
+fred_analysis$prereg_r <- as.factor(fred_analysis$prereg_r)
+#contrasts
+cat_vars <- c("publication_strategy", "is_oa", "subject_final","has_overlap","prereg_r")
+fred_analysis <- fred_analysis %>%
+  mutate(across(all_of(cat_vars), ~ {
+    f <- factor(.x)
+    contrasts(f) <- contr.sum(nlevels(f))
+    f
+  }))
+summary(fred_analysis)
+```
+
+#explorative metaCART on fred variables
+
+```{r}
+n_iter <- 5000
+tree_results_fred <- vector("list", n_iter)
+
+set.seed(42)
+for (i in seq_len(n_iter)) {
+  
+  # Sample one timepoint per study
+  iter_data <- fred_analysis %>%
+    group_by(doi_o) %>%
+    slice_sample(n = 1) %>%
+    ungroup() %>%
+    as.data.frame()
+  
+  # Fit tree, catch errors
+  tree_results_fred[[i]] <- tryCatch({
+    metacart::REmrt(
+      formula = att ~ age_r + publication_strategy +  seniority + prereg_r + sq_N +subject_final+ SNIP_centered +snip_missing + has_overlap + same_journal+ is_oa,
+      vi      = sampling_var,
+      cp      = 0.01,
+      nboot   = 50,   # reduced since we're iterating 5000 times
+      data    = iter_data
+    )
+  }, error = function(e) NULL)
+  
+  if (i %% 500 == 0) message("Iteration ", i, " of ", n_iter)
+}
+
+# Remove failed iterations
+n_failed <- sum(sapply(tree_results_fred, is.null))
+message(n_failed, " iterations failed out of ", n_iter)
+tree_results_ok_fred <- Filter(Negate(is.null), tree_results_fred)
+#save model output
+saveRDS(tree_results_ok_fred, 
+        file = paste0("models/metaCART_fred_", data_source, "_", data_outcome, ".rds"))
+# ------------------------------------------------------------------
+# Summarise results
+# ------------------------------------------------------------------
+# Moderator selection frequency (appeared anywhere in tree)
+
+all_split_vars <- unlist(lapply(tree_results_ok_fred, get_split_vars))
+mod_frequency  <- sort(table(all_split_vars), decreasing = TRUE)
+
+# Root split frequency
+root_vars     <- sapply(tree_results_ok_fred, get_root_var)
+root_frequency <- sort(table(root_vars), decreasing = TRUE)
+
+# Split point distributions for key moderators
+key_mods <- names(mod_frequency)[1:min(3, length(mod_frequency))]
+split_points <- lapply(setNames(key_mods, key_mods), function(v) {
+  pts <- unlist(lapply(tree_results_ok_fred, get_split_points, var = v))
+  pts[!is.na(pts)]
+})
+
+# ------------------------------------------------------------------
+# Report
+# ------------------------------------------------------------------
+cat("\n=== Moderator selection frequency ===\n")
+print(mod_frequency / length(tree_results_ok_fred))
+
+cat("\n=== Root split frequency ===\n")
+print(root_frequency / length(tree_results_ok_fred))
+
+cat("\n=== Split point distributions ===\n")
+for (v in key_mods) {
+  cat("\n", v, ":\n", sep = "")
+  print(summary(split_points[[v]]))
+}
+
+```
+
+#ROBUSTNESS CHECK
+
+```{r}
+secondary <- eff_long %>%
+  group_by(doi_o, doi_r,publication_strategy, seniority,subject_final,SNIP,has_overlap,same_journal,is_oa) %>%
+  filter(time > publication_year_r + 2) %>%
+  summarise(
+    pooled_att = sum(att / sampling_var) / sum(1 / sampling_var),
+    pooled_var = 1 / sum(1 / sampling_var),
+    pooled_se  = sqrt(pooled_var),
+    .groups = "drop"
+  )
+
+
+secondary <- secondary %>%
+  mutate(
+    snip_missing  = is.na(SNIP),
+    SNIP_centered = scale(SNIP, center = TRUE, scale = FALSE)[,1],
+    SNIP_centered = if_else(snip_missing, 0, SNIP_centered)
+  )
+```
+
+#metafor analysis
+```{r}
+str(secondary)
+secondary <- secondary %>%
+  mutate(across(
+    (where(is.logical) | where(is.character)) & !starts_with("doi"),
+    as.factor
+  ))
+
+#contrasts
+cat_vars <- c("publication_strategy", "is_oa", "subject_final","has_overlap")
+
+secondary <- secondary %>%
+  mutate(across(all_of(cat_vars), ~ {
+    f <- factor(.x)
+    contrasts(f) <- contr.sum(nlevels(f))
+    f
+  }))
+
+contrasts(secondary$subject_final)
+# model
+robustness_model <- rma(yi = pooled_att, vi = pooled_var,
+              mods = ~ has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + subject_final,
+              method = "REML", data = secondary)
+#att ~ ~ age_r + has_overlap + same_journal + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
+summary(robustness_model)
+
+
+# residuals / QQ
+z <- rstandard(robustness_model)$z
+par(mfrow=c(1,2)); hist(z, main="Std residuals"); qqnorm(z); qqline(z, col="red")
+# Raw residuals
+res <- resid(robustness_model)
+
+
+hist(res, main = "Histogram of residuals", xlab = "Residual", breaks = 20)
+plot(res)
+qqnorm(res); qqline(res, col = "red")
+
+
+
+```
+
+```{r}
+summary(reg_model)
+
+```
+
+#metaCART robustness check
+```{r}
+n_iter <- 5000
+tree_results_secondary <- vector("list", n_iter)
+set.seed(42)
+
+for (i in seq_len(n_iter)) {
+  
+  # No sampling needed - one pooled observation per study
+  iter_data <- secondary %>%
+    as.data.frame()
+  
+  # Fit tree, catch errors
+  tree_results_secondary[[i]] <- tryCatch({
+    metacart::REmrt(
+      formula = pooled_att ~ seniority +subject_final+ SNIP_centered + snip_missing + 
+                             has_overlap + same_journal + is_oa + publication_strategy,
+      vi      = pooled_var,
+      cp      = 0.01,
+      nboot   = 50,
+      data    = iter_data
+    )
+  }, error = function(e) NULL)
+  
+  if (i %% 500 == 0) message("Iteration ", i, " of ", n_iter)
+}
+
+# Remove failed iterations
+n_failed <- sum(sapply(tree_results_secondary, is.null))
+message(n_failed, " iterations failed out of ", n_iter)
+tree_results_ok_secondary <- Filter(Negate(is.null), tree_results_secondary)
+
+# Moderator selection frequency (appeared anywhere in tree)
+all_split_vars <- unlist(lapply(tree_results_ok_secondary, get_split_vars))
+mod_frequency  <- sort(table(all_split_vars), decreasing = TRUE)
+
+# Root split frequency
+root_vars     <- sapply(tree_results_ok_secondary, get_root_var)
+root_frequency <- sort(table(root_vars), decreasing = TRUE)
+
+# Split point distributions for key moderators
+key_mods <- names(mod_frequency)[1:min(3, length(mod_frequency))]
+split_points <- lapply(setNames(key_mods, key_mods), function(v) {
+  pts <- unlist(lapply(tree_results_ok_secondary, get_split_points, var = v))
+  pts[!is.na(pts)]
+})
+# Summary of results
+cat("\n=== Moderator selection frequency ===\n")
+print(mod_frequency / length(tree_results_ok_secondary))
+
+cat("\n=== Root split frequency ===\n")
+print(root_frequency / length(tree_results_ok_secondary))
+
+cat("\n=== Split point distributions ===\n")
+for (v in key_mods) {
+  cat("\n", v, ":\n", sep = "")
+  print(summary(split_points[[v]]))
+}
+
+
+# Save model output
+saveRDS(tree_results_ok_secondary, 
+        file = paste0("models/metaCART_secondary_", data_source, "_", data_outcome, ".rds"))
+
+
+```

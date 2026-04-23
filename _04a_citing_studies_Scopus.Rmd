@@ -1,0 +1,101 @@
+---
+title: "_04_citing_studies_Scopus"
+author: "Josefina Weinerova"
+date: "2026-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# package loading
+```{r}
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  tidyverse, httr, jsonlite,
+  purrr, dplyr, tibble, data.table,
+  stringr, rscopus
+)
+
+source("R/scopus_helpers.R")
+```
+
+#data loading
+```{r}
+full_matched_df <- readRDS("data/full_matched_df.rds")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+```
+# Switch citation type
+
+```{r switch}
+# Choose citation type: "original" or "rep"
+citation_type <- "rep"
+
+cfg <- switch(
+  citation_type,
+  
+  "original" = list(
+    dois       = full_matched_df$doi,
+    raw_dir    = "scopus_raw",
+    out_csv    = "citing_studies_scopus.csv",
+    log_csv    = "scopus_progress_log.csv",
+    raw_suffix = "_doc.rds",
+    out_rds    = "data/citing_studies_scopus.rds",
+    dedup      = FALSE
+  ),
+  
+  "rep" = list(
+    dois       = df_meta$doi_r,
+    raw_dir    = "scopus_raw_rep",
+    out_csv    = "citing_studies_scopus_rep_add.csv",
+    log_csv    = "scopus_progress_log_rep_add.csv",
+    raw_suffix = "_doc_rep.rds",
+    out_rds    = "data/citing_studies_scopus_rep.rds",
+    dedup      = TRUE
+  ),
+  
+  stop("Invalid citation_type. Choose 'original' or 'rep'.")
+)
+
+# Clean DOIs
+dois <- cfg$dois |>
+  trimws() |>
+  (\(x) unique(x[!is.na(x) & x != ""]))()
+
+message("Citation type: ", citation_type)
+message("Unique DOIs to query: ", length(dois))
+```
+#run the scopus citation pipeline
+
+```{r run-pipeline}
+key <- Sys.getenv("SCOPUS_API_KEY")
+rscopus::set_api_key(key)
+
+run_scopus_citing_pipeline(
+  dois       = dois,
+  api_key    = key,
+  raw_dir    = cfg$raw_dir,
+  out_csv    = cfg$out_csv,
+  log_csv    = cfg$log_csv,
+  raw_suffix = cfg$raw_suffix
+)
+```
+
+# Post-processing and save
+
+```{r post-process}
+citing_studies <- read.csv(cfg$out_csv)
+
+citing_studies$year <- substr(citing_studies$citing_date, 1, 4)
+
+if (cfg$dedup) {
+  citing_studies <- citing_studies |>
+    dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
+}
+
+message("Unique DOIs queried: ", length(unique(citing_studies$doi_queried)))
+
+saveRDS(citing_studies, cfg$out_rds)
+```

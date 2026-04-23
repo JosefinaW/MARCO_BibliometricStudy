@@ -1,0 +1,443 @@
+{
+  "version": "stabu-adapted-v1.1",
+  "description": "Clusters derived from German Federal Statistical Office classification with modifications for applied social sciences",
+  "clusters": [
+    {
+      "id": "religious_studies_theology",
+      "label": "Religious Studies & Theology",
+      "notes": [
+        "Merges Protestant Theology, Catholic Theology, Islamic Studies, Jewish Studies, Religious Studies, Comparative Religion.",
+        "Includes confessional theologies, biblical studies, church history, religious ethics.",
+        "EXCLUSION: Empirical psychology of religion → Psychology; sociology of religion → Sociology."
+      ]
+    },
+    {
+      "id": "philosophy",
+      "label": "Philosophy",
+      "notes": [
+        "Includes history of philosophy, logic, ethics, epistemology, metaphysics, political philosophy.",
+        "Experimental Philosophy is a field within this cluster.",
+        "EXCLUSION: Purely normative bioethics in medical context → Human Medicine."
+      ]
+    },
+    {
+      "id": "history",
+      "label": "History",
+      "notes": [
+        "Includes ancient, medieval, modern, contemporary, regional, economic, and social history.",
+        "History of science/technology included here unless clearly about present-day science policy.",
+        "EXCLUSION: Archaeological methods → Archaeology (within History)."
+      ]
+    },
+    {
+      "id": "general_comparative_literature_linguistics",
+      "label": "General & Comparative Literature and Linguistics",
+      "notes": [
+        "General/comparative literature, general/comparative linguistics, applied linguistics.",
+        "Computer linguistics, foreign language training, Indo-European studies.",
+        "EXCLUSION: Language-specific studies → respective philology cluster."
+      ]
+    },
+    {
+      "id": "classical_philology",
+      "label": "Classical Philology",
+      "notes": [
+        "Greek Philology, Latin Philology, Byzantine Studies, Papyrology, Old Greek, Classical Linguistics.",
+        "Focus on ancient Greek and Roman languages, literature, and culture."
+      ]
+    },
+    {
+      "id": "german_studies",
+      "label": "German Studies",
+      "notes": [
+        "German linguistics and literature; German as a foreign/second language.",
+        "Dutch Studies, Scandinavian Studies, other Germanic languages (excl. English)."
+      ]
+    },
+    {
+      "id": "english_american_studies",
+      "label": "English & American Studies",
+      "notes": [
+        "English linguistics and literature; American Studies; didactics of English.",
+        "Business English and specialised English included."
+      ]
+    },
+    {
+      "id": "romance_studies",
+      "label": "Romance Studies",
+      "notes": [
+        "French, Italian, Spanish, Ibero-Romance, Portuguese, other Romance languages and literatures."
+      ]
+    },
+    {
+      "id": "slavonic_baltic_finno_ugrian",
+      "label": "Slavonic, Baltic & Finno-Ugrian Studies",
+      "notes": [
+        "Slavonic (East/West/South), Baltic, Finno-Ugrian linguistics and literatures.",
+        "Includes Russian, Polish, Czech, Balkan Studies, Sorabistics."
+      ]
+    },
+    {
+      "id": "other_linguistics_cultural_studies",
+      "label": "Other Linguistics & Cultural Studies",
+      "notes": [
+        "African, Asian, Middle Eastern, Turkic, and other non-European linguistics and cultural studies.",
+        "Includes Egyptology, Sinology, Japanese Studies, Korean Studies, Indian Studies, etc.",
+        "EXCLUSION: Religious-studies-focused work → Religious Studies & Theology."
+      ]
+    },
+    {
+      "id": "cultural_studies",
+      "label": "Cultural Studies",
+      "notes": [
+        "Cultural studies in the narrower sense; ethnology, European ethnology, folklore studies.",
+        "EXCLUSION: Media/cultural industries with social-science focus → Media & Communication."
+      ]
+    },
+    {
+      "id": "regional_studies",
+      "label": "Regional Studies",
+      "notes": [
+        "Area studies: African, Latin American, Near/Middle Eastern, North American, European, East Asian, South Asian, Southeast Asian Studies.",
+        "Interdisciplinary study of specific world regions."
+      ]
+    },
+    {
+      "id": "media_communication_studies",
+      "label": "Media & Communication Studies",
+      "notes": [
+        "Merged Media Studies and Communication Studies/Journalism.",
+        "Includes journalism studies, mass communication, media content analysis, media effects.",
+        "EXCLUSION: Pure literary/film analysis → relevant literature/arts cluster.",
+        "EXCLUSION: Political communication with clear political-science framing → Political Science."
+      ]
+    },
+    {
+      "id": "political_science",
+      "label": "Political Science",
+      "notes": [
+        "Political systems, political theory, comparative politics, international relations, political behaviour.",
+        "Political communication can be coded here if primarily about political processes/institutions.",
+        "EXCLUSION: Political psychology with psychological theory → Psychology."
+      ]
+    },
+    {
+      "id": "sociology_social_sciences",
+      "label": "Sociology & Social Sciences",
+      "notes": [
+        "General sociology, social theory, demography, methods in sociology, special sociologies.",
+        "Social structure, institutions, networks, stratification, inequality.",
+        "EXCLUSION: Individual-level psychological constructs → Psychology.",
+        "EXCLUSION: Large-scale attitude surveys without sociological theory → may be Psychology or Political Science."
+      ]
+    },
+    {
+      "id": "social_work_services",
+      "label": "Social Work & Social Services",
+      "notes": [
+        "Social work, social pedagogy, social services, social welfare practice.",
+        "Applied intervention research in social service contexts."
+      ]
+    },
+    {
+      "id": "psychology",
+      "label": "Psychology",
+      "notes": [
+        "All branches of scientific psychology: general/cognitive, social, clinical, developmental, biological/neuro, educational, occupational/organisational, personality, methods.",
+        "Field-level breakdown handled separately for clusters with >50 papers.",
+        "EXCLUSION: Psychiatry and psychotherapy in medical settings → Human Medicine."
+      ]
+    },
+    {
+      "id": "education",
+      "label": "Education",
+      "notes": [
+        "Educational science, schooling, teacher training, curriculum, empirical education research.",
+        "Education policy, adult education, early childhood education, special education.",
+        "EXCLUSION: Discipline-specific teaching (e.g., teaching statistics in psychology) → the discipline.",
+        "EXCLUSION: Educational psychology → Psychology."
+      ]
+    },
+    {
+      "id": "law",
+      "label": "Law",
+      "notes": [
+        "Civil, public, criminal, labour, tax, EU and international law, comparative law.",
+        "Philosophy of law, history of law, sociology of law.",
+        "EXCLUSION: Clearly sociological law-and-society work → Sociology."
+      ]
+    },
+    {
+      "id": "public_administration",
+      "label": "Public Administration",
+      "notes": [
+        "Public management, administrative science, civil service studies.",
+        "Government operations and policy implementation."
+      ]
+    },
+    {
+      "id": "economics_business",
+      "label": "Economics & Business",
+      "notes": [
+        "Economics, econometrics, business administration, public finance, international economics.",
+        "Includes Marketing as a field (consumer behaviour goes here unless explicitly psychological theory).",
+        "Includes Behavioural/Experimental Economics when framed with economic constructs (utility, incentives, markets, game theory).",
+        "EXCLUSION: General JDM (heuristics, biases) without economic framing → Psychology (Cognitive)."
+      ]
+    },
+    {
+      "id": "sport_sciences",
+      "label": "Sport Sciences",
+      "notes": [
+        "Sport science, sport pedagogy, sport medicine (non-clinical), sport psychology, sport sociology."
+      ]
+    },
+    {
+      "id": "health_sciences_general",
+      "label": "Health Sciences (General)",
+      "notes": [
+        "Public health, health promotion, health management, health economics (if not clearly economics).",
+        "Nursing science and non-medical health professions."
+      ]
+    },
+    {
+      "id": "mathematics",
+      "label": "Mathematics",
+      "notes": [
+        "Pure and applied mathematics: algebra, analysis, geometry, topology, stochastics.",
+        "EXCLUSION: Applied stats as a tool in a specific field → that field."
+      ]
+    },
+    {
+      "id": "statistics",
+      "label": "Statistics",
+      "notes": [
+        "Statistics as a mathematical/methodological discipline.",
+        "EXCLUSION: Applied statistics in a substantive discipline → that discipline."
+      ]
+    },
+    {
+      "id": "physics_astronomy",
+      "label": "Physics & Astronomy",
+      "notes": [
+        "Theoretical, experimental, applied physics; astrophysics; astronomy."
+      ]
+    },
+    {
+      "id": "chemistry",
+      "label": "Chemistry",
+      "notes": [
+        "Inorganic, organic, physical, analytical chemistry, macromolecular chemistry."
+      ]
+    },
+    {
+      "id": "pharmacy",
+      "label": "Pharmacy",
+      "notes": [
+        "Pharmaceutical chemistry, technology, biology, pharmacology, clinical pharmacy."
+      ]
+    },
+    {
+      "id": "biology",
+      "label": "Biology",
+      "notes": [
+        "Botany, zoology, microbiology, genetics, ecology, neurobiology, biotechnology."
+      ]
+    },
+    {
+      "id": "earth_sciences",
+      "label": "Earth Sciences",
+      "notes": [
+        "Geology, geophysics, geochemistry, meteorology, oceanography, hydrology."
+      ]
+    },
+    {
+      "id": "geography",
+      "label": "Geography",
+      "notes": [
+        "Physical and human geography, regional geography, landscape ecology, geoinformatics."
+      ]
+    },
+    {
+      "id": "human_medicine",
+      "label": "Human Medicine",
+      "notes": [
+        "Pre-clinical, clinical-theoretical, and clinical-practical human medicine.",
+        "Includes psychiatry, medical psychology, biomedical research."
+      ]
+    },
+    {
+      "id": "dentistry",
+      "label": "Dentistry",
+      "notes": [
+        "Pre-clinical and clinical dentistry, orthodontics, dental surgery."
+      ]
+    },
+    {
+      "id": "veterinary_medicine",
+      "label": "Veterinary Medicine",
+      "notes": [
+        "Pre-clinical, clinical-theoretical, and clinical-practical veterinary medicine."
+      ]
+    },
+    {
+      "id": "landscape_management",
+      "label": "Landscape Management & Environmental Architecture",
+      "notes": [
+        "Landscape architecture, landscape ecology, landscape planning, nature conservation."
+      ]
+    },
+    {
+      "id": "agriculture",
+      "label": "Agriculture",
+      "notes": [
+        "Plant production, animal husbandry, agricultural engineering, agricultural economics, horticulture."
+      ]
+    },
+    {
+      "id": "forestry_wood_management",
+      "label": "Forestry & Wood Management",
+      "notes": [
+        "Forestry, forest science, wood management, wood science."
+      ]
+    },
+    {
+      "id": "nutritional_domestic_science",
+      "label": "Nutritional & Domestic Science",
+      "notes": [
+        "Nutritional science, household science, food science."
+      ]
+    },
+    {
+      "id": "industrial_engineering",
+      "label": "Industrial Engineering",
+      "notes": [
+        "Industrial engineering with engineering focus (not business informatics)."
+      ]
+    },
+    {
+      "id": "mining_metallurgy",
+      "label": "Mining & Metallurgy",
+      "notes": [
+        "Mining engineering, mineral resources, metallurgy and foundry engineering."
+      ]
+    },
+    {
+      "id": "mechanical_process_engineering",
+      "label": "Mechanical & Process Engineering",
+      "notes": [
+        "Mechanical engineering, production, manufacturing, process engineering."
+      ]
+    },
+    {
+      "id": "electrical_computer_information_engineering",
+      "label": "Electrical, Computer & Information Engineering",
+      "notes": [
+        "Electrical engineering, power systems, communications engineering, embedded systems."
+      ]
+    },
+    {
+      "id": "transport_engineering_nautical",
+      "label": "Transport Engineering & Nautical Science",
+      "notes": [
+        "Transport systems engineering, automotive, aerospace, shipbuilding, nautical science."
+      ]
+    },
+    {
+      "id": "architecture",
+      "label": "Architecture",
+      "notes": [
+        "Architecture, building design, urban design (design aspect)."
+      ]
+    },
+    {
+      "id": "spatial_planning",
+      "label": "Spatial Planning",
+      "notes": [
+        "Urban, regional, and spatial planning, infrastructure planning, environmental planning."
+      ]
+    },
+    {
+      "id": "civil_engineering",
+      "label": "Civil Engineering",
+      "notes": [
+        "Structural engineering, construction engineering, hydraulics, transport infrastructure."
+      ]
+    },
+    {
+      "id": "surveying_geoinformation",
+      "label": "Surveying & Geoinformation",
+      "notes": [
+        "Surveying, cartography, photogrammetry, geodesy."
+      ]
+    },
+    {
+      "id": "computer_science",
+      "label": "Computer Science",
+      "notes": [
+        "All branches of computer science: AI, software engineering, theoretical CS, bioinformatics.",
+        "Business informatics for computer scientists is here; for economists → Economics & Business."
+      ]
+    },
+    {
+      "id": "materials_science_engineering",
+      "label": "Materials Science & Materials Engineering",
+      "notes": [
+        "Materials science and engineering of metals, polymers, ceramics, composites."
+      ]
+    },
+    {
+      "id": "engineering_general",
+      "label": "Engineering (General & Interdisciplinary)",
+      "notes": [
+        "Interdisciplinary engineering topics, mechatronics, renewable energies."
+      ]
+    },
+    {
+      "id": "fine_arts",
+      "label": "Fine Arts",
+      "notes": [
+        "Painting, sculpture, photography, performance, new media art."
+      ]
+    },
+    {
+      "id": "design",
+      "label": "Design",
+      "notes": [
+        "Product, communication, graphic, fashion, textile, jewellery design."
+      ]
+    },
+    {
+      "id": "performing_arts_film_theatre",
+      "label": "Performing Arts, Film & Theatre",
+      "notes": [
+        "Theatre, acting, directing, dance, film and television production, theatre studies."
+      ]
+    },
+    {
+      "id": "music_musicology",
+      "label": "Music & Musicology",
+      "notes": [
+        "Music performance, composition, conducting, church music, music education, musicology."
+      ]
+    },
+    {
+      "id": "art_art_theory",
+      "label": "Art & Art Theory",
+      "notes": [
+        "Art history, art education, art theory, restoration, art therapy."
+      ]
+    },
+    {
+      "id": "science_studies",
+      "label": "Science Studies / Theory of Science",
+      "notes": [
+        "Interdisciplinary study of science as a social or epistemic system.",
+        "Metascience, research on research, science policy, scientometrics.",
+        "USE ONLY when the article analyses science in general, not a specific discipline's methods.",
+        "EXCLUSION: Discipline-specific methods papers → that discipline.",
+        "EXCLUSION: Replication studies in psychology → Psychology; in economics → Economics."
+      ]
+    }
+  ]
+}

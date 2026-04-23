@@ -1,0 +1,198 @@
+---
+title: "_03.5_control_selection"
+author: "Josefina Weinerova"
+date: "2026-02-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# package loading
+```{r}
+# install.packages("openalexR")
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView, sjrdata
+)
+```
+#To do:
+some articles unmatched for some reason - wrong issn? find...
+# data loading
+
+```{r}
+
+all_matched_articles <- readRDS("data/all_matched_articles_pilot.rds")
+matched_journals <- readRDS("data/matched_journals_pilot.rds")
+df_journals <- sjr_journals
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+```
+# function to clean up the issn
+```{r}
+
+clean_issn <- function(x, validate = TRUE, repair_missing_check = FALSE) {
+  y <- str_to_upper(x)
+  y <- str_replace_all(y, "[^0-9X]", "") # keep only digits/X
+
+  # Must be 8 chars now to be considered an ISSN
+  y[nchar(y) != 8] <- NA_character_
+
+  # Insert hyphen
+  y <- ifelse(is.na(y), NA_character_, paste0(substr(y, 1, 4), "-", substr(y, 5, 8)))
+
+  y
+}
+```
+# which articles match to which originals
+```{r}
+matched_journals <- matched_journals %>%
+  tidyr::separate_rows(issn, sep = "\\s*,\\s*") %>% # split to rows
+  mutate(
+    year = suppressWarnings(as.integer(publication_year)),
+    issn = clean_issn(issn, validate = TRUE, repair_missing_check = FALSE)
+  ) %>%
+  filter(!is.na(issn), !is.na(year))
+
+
+not_in_journals <- all_matched_articles %>%
+  anti_join(
+    matched_journals,
+    by = c("issn_l" = "issn",
+           "publication_year" = "year")
+  )
+
+combination <- merge(all_matched_articles, matched_journals, by.x = c("issn_l", "publication_year"), by.y = c("issn", "year"),  suffixes = c("", "_j"), all.x = TRUE,
+  sort  = FALSE   
+)
+
+combination <- combination %>%
+  dplyr::select(issn_l, publication_year, doi, doi_o, sjr_diff)
+
+combination %>% filter(is.na(doi_o))
+
+
+
+
+df_journals
+
+```
+# remove rows with missing dois, dois for supplementary material, dois that are for issues instead of articles, book chapters and dois that are themselves a replication in FLoRA
+```{r}
+nrow(combination)
+combination <- combination %>%
+  filter(!is.na(doi) & !grepl("\\.supp$", doi))
+combination <- combination %>%
+  filter(!(doi_o %in% df_meta$doi_r))
+
+```
+# subselect
+```{r}
+n_controls <- 10L
+set.seed(422)
+# faster than stringr for big columns
+combination <- combination %>%
+  mutate(
+    doi_o  = tolower(trimws(doi_o)),
+    doi = tolower(trimws(doi))
+  )
+head(combination)
+# get treated/control
+
+treated_dois <- sample(unique(combination$doi_o))
+control_studies <- setdiff(unique(combination$doi), treated_dois)
+
+# scan combination ONCE to get only candidate rows we could ever use
+cand <- combination %>%
+  filter(
+    doi %in% control_studies,
+    doi_o %in% treated_dois
+  ) %>%
+  arrange(doi_o, doi)
+
+cand <- cand %>%
+  group_by(doi_o) %>%
+  slice_sample(prop = 1) %>%
+  ungroup()
+
+cand_split <- split(cand, cand$doi_o)
+
+# O(1) membership test, no growing vector copies
+used <- new.env(hash = TRUE, parent = emptyenv())
+
+matched_list <- vector("list", length(treated_dois))
+names(matched_list) <- treated_dois
+
+for (i in seq_along(treated_dois)) {
+  tid <- treated_dois[i]
+  df  <- cand_split[[tid]]
+  if (is.null(df) || nrow(df) == 0) next
+
+  u <- unique(df$doi)  # already ordered by arrange()
+  keep <- u[!vapply(u, exists, logical(1), envir = used)]
+  sel <- head(keep, n_controls)
+
+  for (x in sel) used[[x]] <- TRUE
+
+  matched_list[[i]] <- df[df$doi %in% sel, ] %>%
+    mutate(treated_doi_queried = tid)
+}
+
+matched_analysis_df <- bind_rows(matched_list)
+
+# Inspect
+head(matched_analysis_df)
+
+# 1) Treated rows that already exist (self-match present)
+treated_rows_exist <- combination %>%
+  filter(doi == doi_o) %>%
+  group_by(doi_o) %>%
+  slice_min(abs(sjr_diff), n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(treated_doi_queried = doi_o)
+
+# 2) Identify treated DOIs missing a self-match row
+missing_treated <- setdiff(unique(combination$doi_o), unique(treated_rows_exist$doi_o))
+
+# 3) Create a synthetic treated row for each missing doi_o
+treated_rows_missing <- combination %>%
+  filter(doi_o %in% missing_treated) %>%
+  group_by(doi_o) %>%
+  slice(1) %>%                      # grabs publication_year (and issn_l) from existing rows for that doi_o
+  ungroup() %>%
+  transmute(
+    issn_l = issn_l,
+    publication_year = publication_year,
+    doi = doi_o,                    # <- make treated row
+    doi_o = doi_o,
+    sjr_diff = 0,                   # or NA_real_ if you prefer
+    treated_doi_queried = doi_o
+  )
+
+# 4) Final treated_rows = real self-matches + patched rows
+treated_rows <- bind_rows(treated_rows_exist, treated_rows_missing)
+
+# combine treated + matched controls
+full_matched_df <- bind_rows(treated_rows, matched_analysis_df)
+colnames(full_matched_df)
+full_matched_df <- full_matched_df %>%
+  distinct(doi, publication_year, .keep_all = TRUE)
+#check number of studies for each treated doi
+full_matched_df %>%
+  dplyr::group_by(treated_doi_queried) %>%
+  summarise(n_unique = n_distinct(doi), .groups = "drop")
+
+head(full_matched_df)
+length(unique(full_matched_df$doi))
+
+
+
+```
+
+```{r}
+saveRDS(full_matched_df, "data/full_matched_df.rds")
+
+```

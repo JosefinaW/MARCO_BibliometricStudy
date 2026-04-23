@@ -1,0 +1,452 @@
+---
+title: "_06_fect_analysis"
+author: "Josefina Weinerova"
+date: "2025-10-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView,readxl, fixest, etwfe
+)
+```
+
+# analysis - load analysis_pad file here if starting from scratch
+```{r}
+df_journals_L <- readRDS("df_journals_L.rds")
+```
+
+#switch data source
+```{r}
+# Choose data source: "OC" or "Scopus"
+data_source <- "Scopus"
+
+analysis_padded <- switch(
+  data_source,
+  "OC" = readRDS("data/analysis_pad.rds"),
+  "Scopus" = readRDS("data/analysis_pad_Scopus.rds"),
+  stop("data_source must be either 'OC' or 'Scopus'")
+)
+```
+
+## Sample description
+Check if control to treated numbers fit
+
+```{r}
+
+analysis_padded %>% 
+  group_by(doi_queried) %>%
+  summarise(
+    ever_treated = any(D == 1),
+    treat_year = ifelse(ever_treated, min(year[D == 1]), NA_integer_),
+    pre_n = sum(year < treat_year & (D == 0 | !ever_treated)),
+    post_n = sum(year >= treat_year & is.finite(treat_year)),
+    missing_pub_year = all(is.na(publication_year)),
+    missing_pub_year_any = any(is.na(publication_year)),
+    inconsistent_years = length(na.omit(unique(publication_year_r))) > 1
+  ) %>%
+  summarise(
+    n_units = n(),
+    n_treated = sum(ever_treated),
+    n_control = n_units - n_treated,
+    pre_n_median = median(pre_n[ever_treated], na.rm = TRUE),
+    pre_n_min = min(pre_n[ever_treated], na.rm = TRUE),
+    pre_n_max = max(pre_n[ever_treated], na.rm = TRUE),
+    pre_n_below_5 = sum(pre_n[ever_treated] < 5, na.rm = TRUE),
+    post_n_median = median(post_n[ever_treated], na.rm = TRUE),
+    post_n_min = min(post_n[ever_treated], na.rm = TRUE),
+    post_n_max = max(post_n[ever_treated], na.rm = TRUE),
+    n_missing_pub_year = sum(missing_pub_year),
+    n_missing_pub_year_any = sum(missing_pub_year_any),
+    n_inconsistent_years = sum(inconsistent_years)
+  ) %>% 
+  pivot_longer(everything(), names_to = "stat", values_to = "value")
+
+
+
+analysis_padded %>% 
+  select(doi_queried, publication_year, D) %>% 
+  group_by(doi_queried, publication_year) %>%
+  summarise(ever_treated = any(D == 1)) %>%
+  ungroup() %>%
+  ggplot(aes(x = publication_year, fill = as.factor(ever_treated))) +
+  geom_bar(position = "dodge")
+
+analysis_padded %>% 
+  select(doi_queried, publication_year, D) %>% 
+  group_by(doi_queried, publication_year) %>%
+  dplyr::summarise(ever_treated = any(D == 1)) %>%
+  ungroup() %>%
+  count(publication_year, ever_treated) %>% 
+  pivot_wider(names_from = ever_treated, values_from = n, values_fill = 0) %>% 
+  mutate(ratio = `FALSE` / `TRUE`)
+
+
+analysis_padded %>% 
+  dplyr::group_by(doi_queried)%>%
+  filter(any(D==1)) %>%
+  ungroup%>%
+    mutate(unit_order = match(doi_queried, unique(doi_queried))) %>% 
+  panelview(n_citations ~ D, index = c("unit_order","year"),
+          xlab = "Year", ylab = "Unit", display.all = T,
+          gridOff = TRUE)
+
+
+
+
+
+analysis_padded%>%filter(year<2000)
+
+
+```
+# add covariates
+```{r}
+analysis_padded <- analysis_padded %>%mutate(issn_l = str_replace_all(issn_l, "-", ""))
+#sjr
+sjr <- df_journals_L %>%mutate(issn_l=issn) %>% select(year,issn_l,sjr)
+analysis_padded <- merge(
+  x  = analysis_padded,
+  y  = sjr,
+  by = c("issn_l", "year"),
+  all.x = TRUE  # keep all rows from analysis_padded (left join)
+)
+#age2
+analysis_padded <- analysis_padded %>%
+  group_by(doi_queried) %>%
+  mutate(
+    age  = year - publication_year,
+    age2 = age^2
+  ) %>%
+  ungroup() %>% arrange(doi_queried, year)
+
+#forward fill sjr
+analysis_padded <- analysis_padded %>%
+  arrange(doi_queried, year) %>%
+  group_by(doi_queried) %>%
+  fill(sjr, .direction = "down") %>%
+  ungroup()
+
+analysis_padded %>% filter(is.na(sjr))
+```
+
+# analysis 
+```{r}
+str(analysis_padded)
+
+fit_factor <- fect(
+  n_citations ~ D + age2 + sjr, 
+  data = analysis_padded,
+  index = c("doi_queried", "year"),
+  method = "ife", 
+  force = "two-way",
+  se = TRUE,
+  CV = TRUE,
+  r = 1:4,
+  nboots=500,
+  keep.sims = TRUE,
+  min.T0 = 5
+)
+
+
+
+
+
+```
+
+
+# analysis - run only with the factor selected as best
+```{r}
+
+
+fit <- fect(
+  n_citations ~ D + age2 + sjr, 
+  data = analysis_padded,
+  index = c("doi_queried", "year"),
+  method = "ife", 
+  force = "two-way",
+  se = TRUE,
+  CV = TRUE,
+  r = 1,
+  nboots=500,
+  keep.sims = TRUE,
+  min.T0 = 2
+)
+
+
+print(fit)
+
+plot(fit,
+  main = "Estimated ATT (FEct) - real", ylab = "Effect of D on citations",
+  cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
+)
+
+
+
+saveRDS(fit, paste0("models/fit_citation_", data_source, ".rds"))
+```
+#control tests
+```{r}
+#placebo - checks for pre-treatment effects
+placebo_win <- c(-4, -1)
+
+fit_placebo <- fect(
+  n_citations ~ D+ age2 +sjr,
+  data   = analysis_padded,
+  index  = c("doi_queried","year"),
+  method = "ife",
+  force  = "two-way",
+  r      = 1,
+  se     = TRUE,
+  CV     = FALSE, 
+  nboots=200,
+  placeboTest   = TRUE,
+  placebo.period = placebo_win,
+    min.T0 = 2 
+)
+
+fit_placebo$test.out
+p.out<-plot(
+  fit_placebo, type = "equiv", start0 = TRUE,
+  highlight = TRUE,                   
+  stats = c("placebo.p","equiv.p"),                
+  return.test = TRUE
+)
+p.out   # contains placebo test statistics/p-values
+
+```
+
+# pre trend F test on the main model
+- evaluate pre treatment fit
+```{r}
+
+res <- plot(
+  fit,
+  type = "gap",       
+  start0 = TRUE,       
+  return.test = TRUE,  
+  stats = "F.p"       
+)
+
+res$test.out 
+
+```
+
+
+
+## citation without co citation
+
+# analysis 
+```{r}
+str(analysis_padded)
+
+fit_factor_nococit <- fect(
+  n_nococit ~ D + age2 + sjr, 
+  data = analysis_padded,
+  index = c("doi_queried", "year"),
+  method = "ife", 
+  force = "two-way",
+  se = TRUE,
+  CV = TRUE,
+  r = 1:4,
+  nboots=500,
+  keep.sims = TRUE,
+  min.T0 = 5
+)
+
+
+
+
+
+```
+
+# analysis - run only with the factor selected as best
+```{r}
+
+
+fit_nococit <- fect(
+  n_nococit ~ D + age2 + sjr, 
+  data = analysis_padded,
+  index = c("doi_queried", "year"),
+  method = "ife", 
+  force = "two-way",
+  se = TRUE,
+  CV = TRUE,
+  r = 1,
+  nboots=500,
+  keep.sims = TRUE,
+  min.T0 = 2
+)
+
+
+print(fit_nococit)
+
+plot(fit_nococit,
+  main = "Estimated ATT (FEct) - real", ylab = "Effect of D on citations",
+  cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
+)
+
+
+
+saveRDS(fit_nococit, paste0("models/fit_nococitation_", data_source, ".rds"))
+```
+#control tests
+```{r}
+#placebo - checks for pre-treatment effects
+placebo_win <- c(-4, -1)
+
+fit_placebo <- fect(
+  n_nococit ~ D+ age2 +sjr,
+  data   = analysis_padded,
+  index  = c("doi_queried","year"),
+  method = "ife",
+  force  = "two-way",
+  r      = 1,
+  se     = TRUE,
+  CV     = FALSE, 
+  nboots=200,
+  placeboTest   = TRUE,
+  placebo.period = placebo_win,
+    min.T0 = 2 
+)
+
+fit_placebo$test.out
+p.out<-plot(
+  fit_placebo, type = "equiv", start0 = TRUE,
+  highlight = TRUE,                   
+  stats = c("placebo.p","equiv.p"),                
+  return.test = TRUE
+)
+p.out   # contains placebo test statistics/p-values
+
+```
+
+# pre trend F test on the main model
+- evaluate pre treatment fit
+```{r}
+
+res <- plot(
+  fit_nococit,
+  type = "gap",       
+  start0 = TRUE,       
+  return.test = TRUE,  
+  stats = "F.p"       
+)
+
+res$test.out 
+
+```
+
+
+#robustness check with etwfe
+```{r}
+# Step 1: Derive treatment timing variable
+# This is the first year D == 1 for each study
+analysis_padded <- analysis_padded %>%
+  dplyr::group_by(doi_queried) %>%
+  mutate(
+    g = if_else(any(D == 1), min(year[D == 1], na.rm = TRUE), 0L)
+  ) %>%
+  ungroup()
+
+analysis_etwfe <- analysis_padded %>%
+  filter(
+    !is.na(sjr)
+  )
+
+# model
+# Set fixest options globally before fitting
+setFixest_estimation(glm.iter = 10000, fixef.iter = 10000)
+etwfe_fit <- etwfe(
+  fml       = n_citations ~ sjr + age2,  # controls; unit & time FE added automatically
+  tvar      = year,                       # time variable
+  gvar      = g,         # treatment timing (0 = never treated)
+  data      = analysis_etwfe,
+  ivar      = doi_queried,               # unit identifier
+  family    = "poisson",
+  vcov      = ~doi_queried
+)
+
+summary(etwfe_fit)
+
+iplot(etwfe_fit)
+
+# Step 3: Aggregate to a single ATT
+att <- emfx(etwfe_fit, type = "simple")
+print(att)
+
+# Step 4: Dynamic (event-study) plot — equivalent to fect's ATT over time
+att_dynamic <- emfx(etwfe_fit, type = "event")
+print(att_dynamic)
+
+# Plot the event study
+att_dynamic %>%
+  ggplot(aes(x = event, y = estimate, 
+             ymin = conf.low, ymax = conf.high)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_ribbon(alpha = 0.2, fill = "steelblue") +
+  geom_line(colour = "steelblue") +
+  geom_point(colour = "steelblue") +
+  labs(
+    x     = "Years relative to failed replication",
+    y     = "ATT (citation count)",
+    title = "Effect of failed replication on citation counts",
+    subtitle = "ETWFE with Poisson family"
+  ) +
+  theme_minimal()
+```
+
+# for citations without co_citation
+```{r}
+# model for citation without co-citation
+# Set fixest options globally before fitting
+setFixest_estimation(glm.iter = 10000, fixef.iter = 10000)
+etwfe_fit_nococit <- etwfe(
+  fml       = n_nococit ~ sjr + age2,  # controls; unit & time FE added automatically
+  tvar      = year,                       # time variable
+  gvar      = g,         # treatment timing (0 = never treated)
+  data      = analysis_etwfe,
+  ivar      = doi_queried,               # unit identifier
+  family    = "poisson",
+  vcov      = ~doi_queried
+)
+
+summary(etwfe_fit_nococit)
+
+iplot(etwfe_fit_nococit)
+
+# Step 3: Aggregate to a single ATT
+att <- emfx(etwfe_fit_nococit, type = "simple")
+print(att)
+
+# Step 4: Dynamic (event-study) plot — equivalent to fect's ATT over time
+att_dynamic <- emfx(etwfe_fit_nococit, type = "event")
+print(att_dynamic)
+
+# Plot the event study
+att_dynamic %>%
+  ggplot(aes(x = event, y = estimate, 
+             ymin = conf.low, ymax = conf.high)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_ribbon(alpha = 0.2, fill = "steelblue") +
+  geom_line(colour = "steelblue") +
+  geom_point(colour = "steelblue") +
+  labs(
+    x     = "Years relative to failed replication",
+    y     = "ATT (citation count)",
+    title = "Effect of failed replication on citation without co-citation counts",
+    subtitle = "ETWFE with Poisson family"
+  ) +
+  theme_minimal()
+```
+
+
+```

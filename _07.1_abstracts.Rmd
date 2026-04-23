@@ -1,0 +1,168 @@
+---
+title: "_07.1_abstracts"
+author: "Josefina Weinerova"
+date: "2026-03-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# package loading
+```{r}
+# install.packages("openalexR")
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  openalexR, cowplot, tidyverse, httr, jsonlite,
+  citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
+  panelView, rscopus, httr2, URLencode
+)
+```
+# load dataset
+```{r}
+df <- read_csv("2025-02-07_COSdata_validated_delivered.csv")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
+# remove spaces from dois
+df$doi_o <- gsub(" ", "", df$doi_o)
+df$doi_r <- gsub(" ", "", df$doi_r)
+```
+#select doi_o
+```{r}
+df$doi_o <- na_if(df$doi_o, "NA")
+df <- df %>% filter(!is.na(doi_o))
+set.seed(422)
+abstract_doi <- sample(unique(df$doi_o),250)
+
+
+df %>% filter(doi_o=="djärv_2018")
+```
+#already existing abstracts
+```{r}
+abstract_df <- df_meta %>% select(doi_o, abstract,title) %>% filter(doi_o %in% abstract_doi) 
+
+abstract_df <- abstract_doi %>%
+  as.data.frame() %>%                    # or tibble, if it's just a vector
+  rename(doi_o = 1) %>%                  # make sure column is named doi_o
+  left_join(abstract_df, by = "doi_o") 
+
+abstract_df <-unique(abstract_df)
+```
+# getting metadata for the original studies
+```{r}
+# get dois for studies without abstracts
+dois_abstract <- abstract_df %>% filter(is.na(abstract)) %>% select(doi_o)
+dois_abstract <- unique(dois_abstract$doi_o)
+email <- Sys.getenv("MY_EMAIL")
+##add email address to run!
+options(openalexR.mailto = email)
+# fetch metadata
+OA_abstract <- oa_fetch(
+  entity = "works",
+  doi = dois_abstract,
+  output = "tibble",
+  verbose = TRUE
+) 
+
+
+
+
+abstract_df <- abstract_df %>%
+  left_join(
+    OA_abstract %>%
+      mutate(doi_o = str_remove(doi, "https://doi.org/")) %>%  # strip the prefix
+      select(doi_o, title_new=title, abstract_new = abstract),                   # rename to avoid column clash
+    by = "doi_o"
+  ) %>%
+  mutate(
+    abstract = coalesce(abstract, abstract_new),
+    title = coalesce(title,title_new)# fill NAs in abstract and title with newly collected ones
+  ) %>%
+  select(-abstract_new)                          # drop the helper column
+
+```
+
+#abstracts
+```{r}
+Skey <- Sys.getenv("SCOPUS_API_KEY")
+dois_sansAbs <- abstract_df %>%
+  filter(is.na(abstract)) %>% select(doi_o)
+dois_sansAbs <- unique(dois_sansAbs$doi_o)
+
+extraAbs <- purrr::map(
+  dois_sansAbs,
+  ~ abstract_retrieval(
+    id         = .x, # the DOI itself
+    identifier = "doi", # tell rscopus it's a DOI
+    api_key    = Skey
+  )
+)
+
+contents <- lapply(extraAbs, function(x) x$content)
+abstracts_sc <- contents |>
+  toJSON(auto_unbox = TRUE, null = "null") |>
+  fromJSON(flatten = TRUE) |>
+  as_tibble()
+
+# combine abstracts from both sources into one file
+
+abstracts_sc$`abstracts-retrieval-response.item.bibrecord.head.abstracts`
+abstracts_sc$`abstracts-retrieval-response.item.bibrecord.item-info.itemidlist.ce:doi`
+
+
+clean_abs <- abstracts_sc %>%
+  transmute(
+    doi_o = `abstracts-retrieval-response.item.bibrecord.item-info.itemidlist.ce:doi`,
+    abstract_filled = `abstracts-retrieval-response.item.bibrecord.head.abstracts`,
+    title_filled = `abstracts-retrieval-response.item.bibrecord.head.citation-title`
+  )
+
+abstract_df <- abstract_df %>%
+  left_join(
+    clean_abs %>% 
+      select(doi_o, abstract_filled, title_filled),                   
+    by = "doi_o"
+  ) %>%
+  mutate(
+    abstract = coalesce(abstract, abstract_filled),
+    title = coalesce(title,title_filled) # fill NAs in title and abstract with newly collected ones
+  ) %>%
+  select(-abstract_filled,-title_filled,-title_new) 
+
+abstract_df %>%
+  filter(is.na(abstract))
+
+abstract_df <- abstract_df %>%
+  mutate(abstract = case_when(
+    doi_o == "10.1037/0022-3514.94.3.545" ~ "Reports an error in Individual differences in the regulation of intergroup bias: The role of conflict monitoring and neural signals for control by David M. Amodio, Patricia G. Devine and Eddie Harmon-Jones (Journal of Personality and Social Psychology, 2008[Jan], Vol 94[1], 60-74). In this article, there was an error in Figure 4. The corrected figure is provided in this erratum. (The following abstract of the original article appeared in record 2007-19165-005.) Low-prejudice people vary considerably in their ability to regulate intergroup responses. The authors hypothesized that this variability arises from a neural mechanism for monitoring conflict between automatic race-biased tendencies and egalitarian intentions. In Study 1, they found that low-prejudice participants whose nonprejudiced responses are motivated by internal (but not external) factors exhibited better control on a stereotype-inhibition task than did participants motivated by a combination of internal and external factors. This difference was associated with greater conflict-monitoring activity, measured by event-related potentials, when responses required stereotype inhibition. Study 2 demonstrated that group differences were specific to response control in the domain of prejudice. Results indicate that conflict monitoring, a preconscious component of response control, accounts for variability in intergroup bias among low-prejudice participants.",
+    doi_o == "10.1002/(SICI)1099-0771(199806)11:2%3C107::AID-BDM292%3E3.0.CO;2-Y"     ~ "This research demonstrates a less-is-better effect in three contexts: (1) a person giving a $45 scarf as a gift was perceived to be more generous than one giving a $55 coat; (2) an overfilled ice cream serving with 7 oz of ice cream was valued more than an underfilled serving with 8 oz of ice cream; (3) a dinnerware set with 24 intact pieces was judged more favourably than one with 31 intact pieces (including the same 24) plus a few broken ones. This less-is-better effect occurred only when the options were evaluated separately, and reversed itself when the options were juxtaposed. These results are explained in terms of the evaluability hypothesis, which states that separate evaluations of objects are often influenced by attributes which are easy to evaluate rather than by those which are important. © 1998 John Wiley & Sons, Ltd.",
+    doi_o == "djärv_2018"~ " A central question in current presupposition theory is what (sub-)classes of triggers
+there are and how they differ from one another (Abusch 2002; Sudo 2012; Tonhauser et al.
+2013; Romoli 2012; Abrus´an 2016). Factives have traditionally been thought to presuppose the
+truth of their complements, but the potential need for further differentiation was present from
+the start, beginning with the distinction between semi-factives (e.g. discover) and ‘full’ factives
+(e.g. regret) by Karttunen (1971). However, the precise nature of the differences involved has
+remained elusive in theoretical terms, and key empirical properties have been difficult to pin
+down experimentally (e.g. Jayez et al. 2015). We present new experimental evidence confirm-
+ing specific differences between emotive factives (be happy, appreciate) and cognitive factives
+(be aware, realize) using a yes/no-continuation acceptability rating task (Cummins et al., 2013).
+We spell out an analysis of the demonstrated contrast in terms of a distinction between triggers
+based on whether or not their presupposed content is encoded as part of the conventionally
+entailed content (Sudo, 2012; Klinedinst, 2010), and also discuss the broader theoretical impli-
+cations of our experimental resultse",
+    doi_o == "10.1111/j.1467-9280.2008.02040.x"           ~ "People are often faced with threats to the legitimacy of their sociopolitical system. According to system-justification theory, when faced with such threats, people are motivated to restore their faith in the status quo by engaging in psychological processes that bolster its apparent legitimacy (Jost, Banaji, & Nosek, 2004). How might such processes of system justification manifest themselves in everyday interpersonal functioning? One way that system justification is revealed in social psychological functioning has been well-documented--through the endorsement and cognitive activation of stereotypes whose specific content justifies social inequality (e.g., Kay et al., 2007). Does the psychological link between benevolent stereotyping and system justification influence how women are treated and judged? We argue that it does, and specifically that when people experience a threat to the legitimacy of the social system, one factor that affects their attraction to a potential romantic partner is whether that partner embodies system-justifying stereotypes, such as those that align with benevolent sexist ideals. We hypothesized that male participants whose faith in the federal system was threatened would show greater romantic interest in women who embody benevolent sexist ideals than in women who do not embody these ideals. We also hypothesized that they would show greater interest in women who embody benevolent sexist ideals than would male participants whose faith in the system was not threatened. The findings are discussed. (PsycINFO Database Record (c) 2016 APA, all rights reserved)",
+    doi_o == "10.1177/0956797611435919"           ~ "This article tested the hypothesis that attachment anxiety positively predicts sensitivity to temperature cues, with the aim of integrating research on associations between temperature and intimacy with perspectives on adult attachment. Study I assessed whether attachment anxiety would positively predict preference for warmth following threat. Study 2 hypothesized that, compared with semantically activating the concept of coldness, semantically activating the concept of warmth would increase anxiously attached people’s relationship satisfaction, as a result of associations between temperature and intimacy. This research was a preliminary examination of the relationship between attachment anxiety and sensitivity to temperature cues. The results suggest that individuals with high levels of attachment anxiety may engage associations between temperature and intimacy as a secondary regulatory strategy and may be especially influenced by such associations when evaluating their current romantic relationships. Thus, this research offers future researchers solid ground from which to explore the links between temperature experiences and attachment-relevant outcomes. (PsycINFO Database Record (c) 2016 APA, all rights reserved)",
+    doi_o == "10.1111/j.1467-9280.2008.02039.x"           ~ "If people use the value of a class of stimuli heuristically to infer the frequency of the stimuli, they will assess more valuable stimulus classes as being less frequent even when value is not diagnostic of frequency. To test this hypothesis, we manipulated the value of stimuli only after participants had encoded them; then, participants assessed the frequencies of the stimuli. A randomization procedure ensured that stimulus value could not be diagnostic of frequency. We did not reveal these frequencies. Participants then learned that they would receive for each previously seen picture from one of the two categories (either birds or flowers). To determine the endowed category, respondents flipped a coin. Next, we asked them to estimate the number of pictures in each category. As predicted, participants were more likely to underestimate the number of flower pictures relative to bird pictures when they expected payment for flower pictures than when they expected payment for bird pictures. In contrast, they were more likely to underestimate the number of bird pictures relative to flower pictures when they expected payment for bird pictures than when they expected payment for flower pictures. Our results implicate a judgment process at the stimulus-retrieval stage, rather than at the encoding stage, because the value difference between the stimulus categories was induced randomly only after the stimuli were presented. (PsycINFO Database Record (c) 2016 APA, all rights reserved)",
+    TRUE ~ abstract  # keep everything else as is
+  ))
+
+abstract_df <- abstract_df %>%
+  mutate(title = case_when(
+    doi_o == "10.1002/(SICI)1099-0771(199806)11:2%3C107::AID-BDM292%3E3.0.CO;2-Y" ~ "Less is better: when low-value options are valued more highly than high-value options",
+    doi_o == "djärv_2018"                                                           ~ "Cognitive vs. emotive factives: An experimental differentiation",
+    TRUE ~ title
+  ))
+
+saveRDS(abstract_df, "data/abstracts_pilot.rds")
+#write_csv(sample_n(abstracts_final, 28), "abstract_valid.csv")
+```
