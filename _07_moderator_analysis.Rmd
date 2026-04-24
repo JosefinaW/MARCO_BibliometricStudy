@@ -137,30 +137,85 @@ mods <- mods %>%
 #subject field of original
 - load field classification from the abstract.rds
 ```{r}
-subject <- read_csv("field_classification/validation_classified.csv")
-table(subject$field_id)
-subject <- subject %>%
-  group_by(field_id) %>%
-  mutate(field_id = case_when(
-    n() < 10 ~ paste0(first(cluster_id), "_other"),
-    TRUE ~ field_id
-  ))
+subject <- read_csv("field_classification/classified_articles_pilot.csv")
 
-subject$subject_final <- ifelse(is.na(subject$field_id),subject$cluster_id,subject$field_id)
+# Combine all field/cluster assignments into one long format to count
+all_assignments <- c(
+  subject$field_id,    # or primary_cluster_id if no field
+  subject$secondary_field_id   # or secondary_cluster_id if no field
+)
 
-subject <- subject %>%
-  group_by(subject_final) %>%
-  mutate(subject_final = case_when(
-    n() < 10 ~ "other",
-    TRUE ~ subject_final
-  ))
+# Count occurrences of each field label
+field_counts <- table(na.omit(all_assignments))
 
-table(subject$subject_final)
+# Identify fields with fewer than 10 occurrences
+rare_fields <- names(field_counts[field_counts < 10])
+
+# Function to recode a single column
+recode_field <- function(col, rare, cluster_col) {
+  dplyr::case_when(
+    is.na(col) ~ NA_character_,
+    col %in% rare ~ paste0(cluster_col, "_other"),  # cluster name + _other
+    TRUE ~ col
+  )
+}
+
+# Apply to primary and secondary columns
+subject$primary_final <- recode_field(
+  subject$field_id, 
+  rare_fields, 
+  subject$cluster_id
+)
+
+subject$secondary_final <- recode_field(
+  subject$secondary_field_id, 
+  rare_fields, 
+  subject$secondary_cluster_id
+)
+
+subject$subject_final_1 <- ifelse(is.na(subject$primary_final),subject$cluster_id,subject$primary_final)
+
+subject$subject_final_2 <- if ("secondary_field_id" %in% colnames(subject)) {
+  ifelse(is.na(subject$secondary_final), subject$secondary_cluster_id, subject$secondary_final)
+} else {
+  subject$secondary_cluster_id
+}
+
+# all unique labels across both columns
+all_subjects <- unique(na.omit(c(subject$subject_final_1, subject$subject_final_2)))
+
+# Create a dummy column for each unique subject
+for (subj in all_subjects) {
+  col_name <- paste0("subj_", gsub(" ", "_", subj))
+  subject[[col_name]] <- as.integer(
+    (!is.na(subject$subject_final_1) & subject$subject_final_1 == subj) |
+    (!is.na(subject$subject_final_2) & subject$subject_final_2 == subj)
+  )
+}
+head(subject)
+#group subjects into other if less than 10 units
+# Identify subj_ columns with fewer than 10 ones
+subj_cols <- grep("^subj_", colnames(subject), value = TRUE)
+rare_subj_cols <- subj_cols[colSums(subject[subj_cols], na.rm = TRUE) < 10]
+
+# Create subj_other: 1 if the study had a 1 in any of the rare columns
+if (length(rare_subj_cols) > 0) {
+  subject$subj_other <- as.integer(
+    rowSums(subject[rare_subj_cols], na.rm = TRUE) > 0
+  )
+  # Drop the rare columns
+  subject <- subject %>% select(-all_of(rare_subj_cols))
+} else {
+  subject$subj_other <- 0L
+}
 
 subject <- subject %>% rename(doi_o=doi)
 
 mods <- mods %>%
-  left_join(subject %>% select(doi_o, subject_final), by = "doi_o")
+  left_join(
+    subject %>% select(doi_o, starts_with("subj_")), 
+    by = "doi_o"
+  )
 
 ```
 
@@ -1535,9 +1590,19 @@ primary <- primary %>%
     as.factor
   ))
 
+# Get all subj_ column names from primary
+subj_vars <- paste(grep("^subj_", colnames(primary), value = TRUE), collapse = " + ")
+
+# Build formula dynamically and add -1 to remove reference group
+formula <- as.formula(paste(
+  "~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered + 
+   snip_missing + is_oa + seniority + same_journal +", 
+  subj_vars, "- 1"
+))
+
 # model
 reg_model <- rma.mv(yi = att, V = sampling_var,
-              mods = ~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + same_journal + subject_final,
+              mods = formula,
               random = ~ 1 | doi_o,
               method = "REML", data = primary)
 #att ~ ~ age_r + has_overlap + same_journal + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
