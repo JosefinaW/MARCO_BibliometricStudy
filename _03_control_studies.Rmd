@@ -40,7 +40,7 @@ get_matches <- matched_journals %>%
   tidyr::separate_rows(issn, sep = "\\s*,\\s*") %>% # split to rows
   mutate(
     year = suppressWarnings(as.integer(publication_year)),
-    issn = clean_issn(issn, validate = TRUE, repair_missing_check = FALSE)
+    issn = clean_issn(issn)
   ) %>%
   distinct(year, issn, .keep_all = TRUE) %>%
   filter(!is.na(issn), !is.na(year))

@@ -1433,7 +1433,7 @@ author_overlap <- df_meta |>
     by = "doi_o",
     relationship = "many-to-many"
   ) |>
-  dplyr::mutate(is_overlap = coalesce(au_id_r == au_id_o, FALSE) |>
+  dplyr::mutate(is_overlap = coalesce(au_id_r == au_id_o, FALSE)) |>
   dplyr::group_by(doi_r, doi_o) |>
   dplyr::summarise(
     n_authors_r  = dplyr::n_distinct(au_id_r, na.rm = TRUE),
