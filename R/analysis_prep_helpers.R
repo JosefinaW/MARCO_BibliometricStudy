@@ -67,6 +67,11 @@ pad_panel <- function(df, y_max = 2025) {
   padded %>%
     dplyr::group_by(doi_queried) %>%
     tidyr::fill(dplyr::all_of(cols_to_fill), .direction = "downup") %>%
+    dplyr::mutate(
+      # Recompute treatment after padding so post-replication zero years
+      # are correctly marked as treated.
+      D = as.integer(!is.na(publication_year_r) & year >= publication_year_r)
+    ) %>%
     dplyr::ungroup()
 }
 
