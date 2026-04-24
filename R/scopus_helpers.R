@@ -1,5 +1,7 @@
 # Shared Scopus helper functions for citing-study retrieval
 
+source("R/api_cache.R")
+
 scopus_search_cursor <- function(query, api_key, count = 200, view = "STANDARD",
                                  wait_time = 0.2, max_records = Inf) {
   out <- list()
@@ -7,22 +9,33 @@ scopus_search_cursor <- function(query, api_key, count = 200, view = "STANDARD",
   n_total <- 0L
 
   repeat {
-    r <- httr::GET(
-      "https://api.elsevier.com/content/search/scopus",
-      query = list(
+    res <- api_cache(
+      service = "scopus_search_cursor_page",
+      key = list(
         query = query,
         count = count,
         cursor = next_cursor,
-        view = view,
-        APIKey = api_key
+        view = view
       ),
-      httr::add_headers("X-ELS-ResourceVersion" = "allexpand")
+      code = {
+        r <- httr::GET(
+          "https://api.elsevier.com/content/search/scopus",
+          query = list(
+            query = query,
+            count = count,
+            cursor = next_cursor,
+            view = view,
+            APIKey = api_key
+          ),
+          httr::add_headers("X-ELS-ResourceVersion" = "allexpand")
+        )
+
+        httr::stop_for_status(r)
+
+        txt <- httr::content(r, as = "text", encoding = "UTF-8")
+        jsonlite::fromJSON(txt, flatten = TRUE)
+      }
     )
-
-    httr::stop_for_status(r)
-
-    txt <- httr::content(r, as = "text", encoding = "UTF-8")
-    res <- jsonlite::fromJSON(txt, flatten = TRUE)
     sr  <- res$`search-results`
 
     entries <- sr$entry
@@ -48,19 +61,11 @@ sanitize_doi <- function(x) {
 }
 
 append_csv <- function(df, path) {
-  if (!file.exists(path)) {
-    write.csv(df, path, row.names = FALSE, na = "")
-  } else {
-    write.table(
-      df, path,
-      sep = ",",
-      row.names = FALSE,
-      col.names = FALSE,
-      append = TRUE,
-      na = "",
-      qmethod = "double"
-    )
-  }
+  append_csv_atomic(df, path, na = "")
+}
+
+append_results_csv <- function(df, path) {
+  append_csv_atomic(df, path, dedupe_by = c("doi_queried", "citing_eid"), na = "")
 }
 
 append_log <- function(doi, status, log_csv, message = NA_character_, queried_eid = NA_character_) {
@@ -97,16 +102,20 @@ process_one_doi <- function(doi, api_key, raw_dir, raw_suffix = "_doc.rds",
   safe_doi <- sanitize_doi(doi)
 
   # 1) DOI -> target document
-  res0 <- rscopus::scopus_search(
-    query = sprintf("DOI(%s)", doi),
-    count = 1,
-    start = 0,
-    view = "STANDARD",
-    max_count = 1,
-    verbose = FALSE
+  res0 <- api_cache(
+    service = "scopus_search_doi",
+    key = list(doi = doi),
+    code = rscopus::scopus_search(
+      query = sprintf("DOI(%s)", doi),
+      count = 1,
+      start = 0,
+      view = "STANDARD",
+      max_count = 1,
+      verbose = FALSE
+    )
   )
 
-  saveRDS(res0, file.path(raw_dir, paste0(safe_doi, raw_suffix)))
+  save_rds_atomic(res0, file.path(raw_dir, paste0(safe_doi, raw_suffix)))
 
   if (length(res0$entries) == 0) {
     stop("No Scopus document found for DOI query.")
@@ -170,7 +179,7 @@ run_scopus_citing_pipeline <- function(dois, api_key, raw_dir, out_csv, log_csv,
                                    raw_suffix = raw_suffix)
 
         if (nrow(cleaned) > 0) {
-          append_csv(cleaned, out_csv)
+          append_results_csv(cleaned, out_csv)
         }
 
         queried_eid <- if (nrow(cleaned) > 0) cleaned$queried_eid[1] else NA_character_

@@ -18,6 +18,8 @@ pacman::p_load(
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
   panelView, rscopus, httr2
 )
+
+source("R/api_cache.R")
 ```
 # load dataset
 ```{r}
@@ -57,10 +59,11 @@ email <- Sys.getenv("MY_EMAIL")
 ##add email address to run!
 options(openalexR.mailto = email)
 # fetch metadata
-OA_abstract <- oa_fetch(
+OA_abstract <- cached_oa_fetch(
   entity = "works",
   doi = dois_abstract,
   output = "tibble",
+  cache_key = list(stage = "abstract_backfill_openalex"),
   verbose = TRUE
 ) 
 
@@ -91,7 +94,7 @@ dois_sansAbs <- unique(dois_sansAbs$doi_o)
 
 extraAbs <- purrr::map(
   dois_sansAbs,
-  ~ abstract_retrieval(
+  ~ cached_abstract_retrieval(
     id         = .x, # the DOI itself
     identifier = "doi", # tell rscopus it's a DOI
     api_key    = Skey

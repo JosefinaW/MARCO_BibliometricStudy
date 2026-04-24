@@ -107,6 +107,6 @@ message("Unique cited DOIs: ", length(unique(citations$cited)))
 # Save
 
 ```{r save}
-saveRDS(citations, cfg$out_rds)
+save_rds_atomic(citations, cfg$out_rds)
 message("Saved to: ", cfg$out_rds)
 ```
