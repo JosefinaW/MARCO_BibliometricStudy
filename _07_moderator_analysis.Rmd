@@ -31,16 +31,16 @@ meta_r <- readRDS("data/metadata_r_OpenAlex.rds")
 # Choose data source: "OC" or "Scopus"
 data_source <- "Scopus"
 
-# Choose outcome variable: "citation" or "nocitation"
+# Choose outcome variable: "citation" or "nococitation"
 data_outcome <- "citation"
 
 fit <- switch(
   paste(data_source, data_outcome, sep = "_"),
   
   "OC_citation"      = readRDS("models/fit_citation_OC.rds"),
-  "OC_nocitation"    = readRDS("models/fit_nocitation_OC.rds"),
+  "OC_nocitation"    = readRDS("models/fit_nococitation_OC.rds"),
   "Scopus_citation"  = readRDS("models/fit_citation_Scopus.rds"),
-  "Scopus_nocitation"= readRDS("models/fit_nocitation_Scopus.rds"),
+  "Scopus_nocitation"= readRDS("models/fit_nococitation_Scopus.rds"),
   
   stop("Invalid combination of data_source and data_outcome")
 )
@@ -1486,8 +1486,8 @@ mods <- mods %>%
       any(type_r == "preprint", na.rm = TRUE) ~ "preprint",
       any(stringr::str_detect(doi_r, paste(preprint_doi, collapse = "|"))) ~ "preprint",
       any(stringr::str_detect(doi_r, "osf")) ~ "preprint",
-      dplyr::n_distinct(doi_o) <= 2 ~ "published",
-      dplyr::n_distinct(doi_o) >= 3 ~ "meta"
+      dplyr::n_distinct(doi_o) <= 3 ~ "published",
+      dplyr::n_distinct(doi_o) > 3 ~ "meta"
     )
   ) %>%
   dplyr::ungroup()
@@ -1505,14 +1505,14 @@ eff_long <- eff_long %>%
 
 eff_long %>% arrange(doi_o)
 
-primary <- eff_long %>% filter(time >= (publication_year_r +1) & time <= (publication_year_r+5))
+primary <- eff_long %>% filter(time >= (publication_year_r + 2) & time <= (publication_year_r+6))
 
 primary %>% arrange(doi_o)
 ```
 #age of replication
 ```{r}
 primary$age_r <- primary$time - primary$publication_year_r
-
+primary$age_r_sq <- (primary$age_r)^2
 table(primary$age_r)
 ```
 #modifying the SNIP to account for missingness
@@ -1535,20 +1535,9 @@ primary <- primary %>%
     as.factor
   ))
 
-
-#contrasts
-cat_vars <- c("publication_strategy", "is_oa", "subject_final","has_overlap")
-
-primary <- primary %>%
-  mutate(across(all_of(cat_vars), ~ {
-    f <- factor(.x)
-    contrasts(f) <- contr.sum(nlevels(f))
-    f
-  }))
-
 # model
 reg_model <- rma.mv(yi = att, V = sampling_var,
-              mods = ~ age_r + has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + subject_final,
+              mods = ~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + same_journal + subject_final,
               random = ~ 1 | doi_o,
               method = "REML", data = primary)
 #att ~ ~ age_r + has_overlap + same_journal + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
