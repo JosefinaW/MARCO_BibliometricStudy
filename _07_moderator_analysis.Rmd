@@ -108,7 +108,7 @@ mods<-unique(mods)
 ```
 #SNIP
 ```{r}
-SNIP <- read_csv("CWTS_ March_2025.csv")
+SNIP <- read_csv("data/CWTS_ March_2025.csv")
 
 print <-setdiff(mods$issn_l_r,SNIP$`Print ISSN`)
 electronic<-setdiff(mods$issn_l_r,SNIP$`Electronic ISSN`)
