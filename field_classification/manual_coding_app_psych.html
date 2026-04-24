@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Article Field Classification — Manual Coding</title>
+<title>Psychology Subfield Classification — Manual Coding</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -57,7 +57,7 @@
 <body>
 
 <div id="upload-screen" class="upload-screen">
-  <h1>Article Field Classification</h1>
+  <h1>Psychology Subfield Classification</h1>
   <p style="color:#666; font-size:14px;">Optional: import prior codings to resume</p>
   <label style="margin-bottom:16px">0. Import codings CSV <input type="file" id="codings-input" accept=".csv"></label>
   <p>Load the articles CSV (<code>doi</code>, <code>title</code>, <code>abstract</code>, <code>source_display_name</code>)</p>
@@ -67,7 +67,7 @@
 
 <div id="app" style="display:none">
   <div class="top-bar">
-    <h1>Article Field Classification</h1>
+    <h1>Psychology Subfield Classification</h1>
     <div class="progress" id="progress-text"></div>
   </div>
   <div class="container">
@@ -94,64 +94,18 @@
 </div>
 
 <script>
-// --- Cluster schema (embedded) ---
+// --- Psychology subfield schema (embedded) ---
 const CLUSTERS = [
-  {id:"psychology", label:"Psychology"},
-  {id:"economics_business", label:"Economics & Business"},
-  {id:"education", label:"Education"},
-  {id:"sociology_social_sciences", label:"Sociology & Social Sciences"},
-  {id:"political_science", label:"Political Science"},
-  {id:"media_communication_studies", label:"Media & Communication Studies"},
-  {id:"philosophy", label:"Philosophy"},
-  {id:"law", label:"Law"},
-  {id:"computer_science", label:"Computer Science"},
-  {id:"human_medicine", label:"Human Medicine"},
-  {id:"biology", label:"Biology"},
-  {id:"statistics", label:"Statistics"},
-  {id:"mathematics", label:"Mathematics"},
-  {id:"health_sciences_general", label:"Health Sciences (General)"},
-  {id:"sport_sciences", label:"Sport Sciences"},
-  {id:"science_studies", label:"Science Studies / Theory of Science"},
-  {id:"public_administration", label:"Public Administration"},
-  {id:"social_work_services", label:"Social Work & Social Services"},
-  {id:"history", label:"History"},
-  {id:"religious_studies_theology", label:"Religious Studies & Theology"},
-  {id:"general_comparative_literature_linguistics", label:"General & Comparative Literature and Linguistics"},
-  {id:"classical_philology", label:"Classical Philology"},
-  {id:"german_studies", label:"German Studies"},
-  {id:"english_american_studies", label:"English & American Studies"},
-  {id:"romance_studies", label:"Romance Studies"},
-  {id:"slavonic_baltic_finno_ugrian", label:"Slavonic, Baltic & Finno-Ugrian Studies"},
-  {id:"other_linguistics_cultural_studies", label:"Other Linguistics & Cultural Studies"},
-  {id:"cultural_studies", label:"Cultural Studies"},
-  {id:"regional_studies", label:"Regional Studies"},
-  {id:"fine_arts", label:"Fine Arts"},
-  {id:"design", label:"Design"},
-  {id:"performing_arts_film_theatre", label:"Performing Arts, Film & Theatre"},
-  {id:"music_musicology", label:"Music & Musicology"},
-  {id:"art_art_theory", label:"Art & Art Theory"},
-  {id:"physics_astronomy", label:"Physics & Astronomy"},
-  {id:"chemistry", label:"Chemistry"},
-  {id:"pharmacy", label:"Pharmacy"},
-  {id:"earth_sciences", label:"Earth Sciences"},
-  {id:"geography", label:"Geography"},
-  {id:"dentistry", label:"Dentistry"},
-  {id:"veterinary_medicine", label:"Veterinary Medicine"},
-  {id:"landscape_management", label:"Landscape Management & Environmental Architecture"},
-  {id:"agriculture", label:"Agriculture"},
-  {id:"forestry_wood_management", label:"Forestry & Wood Management"},
-  {id:"nutritional_domestic_science", label:"Nutritional & Domestic Science"},
-  {id:"industrial_engineering", label:"Industrial Engineering"},
-  {id:"mining_metallurgy", label:"Mining & Metallurgy"},
-  {id:"mechanical_process_engineering", label:"Mechanical & Process Engineering"},
-  {id:"electrical_computer_information_engineering", label:"Electrical, Computer & Information Engineering"},
-  {id:"transport_engineering_nautical", label:"Transport Engineering & Nautical Science"},
-  {id:"architecture", label:"Architecture"},
-  {id:"spatial_planning", label:"Spatial Planning"},
-  {id:"civil_engineering", label:"Civil Engineering"},
-  {id:"surveying_geoinformation", label:"Surveying & Geoinformation"},
-  {id:"materials_science_engineering", label:"Materials Science & Materials Engineering"},
-  {id:"engineering_general", label:"Engineering (General & Interdisciplinary)"},
+  {id:"cognitive_psychology", label:"Cognitive Psychology"},
+  {id:"social_psychology", label:"Social Psychology"},
+  {id:"developmental_psychology", label:"Developmental Psychology"},
+  {id:"biological_neuropsychology", label:"Biological & Neuropsychology"},
+  {id:"clinical_psychology", label:"Clinical Psychology, Diagnostics & Psychotherapy"},
+  {id:"educational_psychology", label:"Educational Psychology"},
+  {id:"occupational_organisational_business_psychology", label:"Occupational, Organisational & Business Psychology"},
+  {id:"differential_personality_diagnostics", label:"Differential & Personality Psychology and Diagnostics"},
+  {id:"methods_evaluation_psychology", label:"Methods & Evaluation in Psychology"},
+  {id:"psychology_general", label:"Psychology (General)"},
 ];
 
 let articles = [];
@@ -228,7 +182,7 @@ document.getElementById('codings-input').addEventListener('change', function(e) 
     let count = 0;
     for (const row of rows) {
       const doi = row.doi || row.DOI || '';
-      const cid = row.cluster_id || row.cluster || '';
+      const cid = row.field_id || row.field || row.cluster_id || row.cluster || '';
       if (doi && cid) { importedCodings[doi] = cid; count++; }
     }
     alert(`Imported ${count} codings. Now load the articles CSV to start.`);
@@ -337,7 +291,7 @@ function save() {
 }
 
 function downloadResults() {
-  let csv = 'doi,cluster_id\n';
+  let csv = 'doi,field_id\n';
   for (const a of articles) {
     const coding = codings[a.doi] || '';
     csv += `"${a.doi}","${coding}"\n`;
@@ -346,7 +300,7 @@ function downloadResults() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'manual_classification.csv';
+  link.download = 'manual_psych_classification.csv';
   link.click();
 }
 

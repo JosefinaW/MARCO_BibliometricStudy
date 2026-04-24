@@ -689,209 +689,80 @@ classify_cluster_fields <- function(
 ```
 
 
-## Abstract Retrieval
+## Classification Run
 
-Retrieve abstracts for original studies (`doi_o`). First attempts OpenAlex (which stores abstracts as inverted indices that need to be reconstructed), then falls back to Scopus for any DOIs where OpenAlex did not return an abstract.
+Loads the 250 pilot abstracts from `data/abstracts_pilot.rds`, enriches them
+with journal display names from OpenAlex, then runs cluster + field
+classification and writes the result to
+`field_classification/classified_articles_pilot.csv`.
 
 ```{r}
-#| label: abstract-retrieval-functions
+#| label: load-pilot-abstracts
 
-#' Fetch abstracts from OpenAlex and Scopus
-#'
-#' @param dois Character vector of DOIs
-#' @param scopus_api_key Scopus API key (defaults to SCOPUS_API_KEY env var)
-#' @param openalex_email Email for polite OpenAlex API access
-#' @return Tibble with columns: doi, title, abstract, source_display_name, abstract_source
-fetch_abstracts <- function(
-  dois,
-  scopus_api_key = Sys.getenv("SCOPUS_API_KEY"),
-  openalex_email = Sys.getenv("OPENALEX_EMAIL", "l.wallrich@bbk.ac.uk")
-) {
-  dois <- unique(na.omit(trimws(dois)))
-  # Normalise: strip URL prefix for matching
-  dois_bare <- sub("^https?://(dx\\.)?doi\\.org/", "", dois, ignore.case = TRUE)
-
-  # --- Step 1: OpenAlex (abstracts are stored as inverted indices, oa_fetch uninverts them) ---
-  cat(sprintf("Querying OpenAlex for %d DOIs...\n", length(dois_bare)))
-  options(openalexR.mailto = openalex_email)
-
-  oa_results <- tryCatch(
-    openalexR::oa_fetch(
-      entity = "works",
-      doi = dois_bare,
-      verbose = TRUE
-    ),
-    error = function(e) {
-      warning("OpenAlex query failed: ", e$message)
-      tibble()
-    }
+articles <- readRDS(here::here("data", "abstracts_pilot.rds")) |>
+  as_tibble() |>
+  rename(doi = doi_o) |>
+  mutate(
+    doi = sub("^https?://(dx\\.)?doi\\.org/", "", doi, ignore.case = TRUE),
+    title = clean_json_text(title),
+    abstract = clean_json_text(abstract)
   )
 
-  if (nrow(oa_results) > 0) {
-    oa_abstracts <- oa_results |>
-      transmute(
-        doi = sub("^https?://(dx\\.)?doi\\.org/", "", doi, ignore.case = TRUE),
-        title = title,
-        abstract = abstract,
-        source_display_name = source_display_name,
-        abstract_source = "openalex"
-      ) |>
-      filter(!is.na(abstract) & nchar(abstract) > 0)
-    cat(sprintf("  OpenAlex returned abstracts for %d / %d DOIs\n",
-                nrow(oa_abstracts), length(dois_bare)))
-  } else {
-    oa_abstracts <- tibble(
-      doi = character(), title = character(),
-      abstract = character(), source_display_name = character(),
-      abstract_source = character()
-    )
-    cat("  OpenAlex returned no results\n")
-  }
+options(openalexR.mailto = Sys.getenv("OPENALEX_EMAIL", "l.wallrich@bbk.ac.uk"))
 
-  # --- Step 2: Scopus fallback for missing abstracts ---
-  missing_dois <- setdiff(tolower(dois_bare), tolower(oa_abstracts$doi))
+oa_journals <- openalexR::oa_fetch(
+  entity = "works",
+  doi = articles$doi,
+  verbose = TRUE
+) |>
+  as_tibble() |>
+  transmute(
+    doi = sub("^https?://(dx\\.)?doi\\.org/", "", doi, ignore.case = TRUE),
+    source_display_name
+  ) |>
+  distinct(doi, .keep_all = TRUE)
 
-  if (length(missing_dois) > 0 && nzchar(scopus_api_key)) {
-    cat(sprintf("Querying Scopus for %d remaining DOIs...\n", length(missing_dois)))
+articles <- articles |>
+  left_join(oa_journals, by = "doi") |>
+  mutate(source_display_name = coalesce(source_display_name, ""))
 
-    scopus_abstracts <- purrr::map_dfr(missing_dois, function(doi) {
-      tryCatch({
-        Sys.sleep(0.25)  # rate limiting
-        resp <- httr::GET(
-          paste0("https://api.elsevier.com/content/abstract/doi/", doi),
-          httr::add_headers(
-            "X-ELS-APIKey" = scopus_api_key,
-            "Accept" = "application/json"
-          )
-        )
-        if (httr::status_code(resp) != 200) {
-          message("  Scopus: HTTP ", httr::status_code(resp), " for ", doi)
-          return(tibble(
-            doi = doi, title = NA_character_,
-            abstract = NA_character_, source_display_name = NA_character_,
-            abstract_source = NA_character_
-          ))
-        }
-
-        body <- httr::content(resp, as = "parsed", encoding = "UTF-8")
-        core <- body$`abstracts-retrieval-response`$coredata
-
-        tibble(
-          doi = doi,
-          title = core$`dc:title` %||% NA_character_,
-          abstract = core$`dc:description` %||% NA_character_,
-          source_display_name = core$`prism:publicationName` %||% NA_character_,
-          abstract_source = "scopus"
-        )
-      }, error = function(e) {
-        message("  Scopus error for ", doi, ": ", e$message)
-        tibble(
-          doi = doi, title = NA_character_,
-          abstract = NA_character_, source_display_name = NA_character_,
-          abstract_source = NA_character_
-        )
-      })
-    }) |>
-      filter(!is.na(abstract) & nchar(abstract) > 0)
-
-    cat(sprintf("  Scopus returned abstracts for %d / %d DOIs\n",
-                nrow(scopus_abstracts), length(missing_dois)))
-  } else {
-    if (length(missing_dois) > 0 && !nzchar(scopus_api_key)) {
-      warning("No SCOPUS_API_KEY set; skipping Scopus fallback for ",
-              length(missing_dois), " DOIs without abstracts")
-    }
-    scopus_abstracts <- tibble(
-      doi = character(), title = character(),
-      abstract = character(), source_display_name = character(),
-      abstract_source = character()
-    )
-  }
-
-  # --- Combine results ---
-  combined <- bind_rows(oa_abstracts, scopus_abstracts) |>
-    distinct(doi, .keep_all = TRUE)
-
-  still_missing <- setdiff(tolower(dois_bare), tolower(combined$doi))
-  if (length(still_missing) > 0) {
-    warning(length(still_missing), " DOIs have no abstract from either source: ",
-            paste(head(still_missing, 5), collapse = ", "),
-            if (length(still_missing) > 5) "..." else "")
-  }
-
-  cat(sprintf("Total: %d / %d DOIs with abstracts\n", nrow(combined), length(dois_bare)))
-  combined
-}
+cat(sprintf(
+  "Loaded %d abstracts; journal resolved for %d\n",
+  nrow(articles),
+  sum(!is.na(articles$source_display_name) & nzchar(articles$source_display_name))
+))
 ```
-
-```{r}
-#| label: retrieve-abstracts
-#| eval: false
-
-# Load main dataset and extract unique original-study DOIs
-cos_data <- read_csv(here::here("2025-02-07_COSdata_validated_delivered.csv"))
-dois_o <- unique(na.omit(cos_data$doi_o))
-
-# Fetch abstracts (OpenAlex first, Scopus fallback)
-articles <- fetch_abstracts(dois_o)
-
-# Save for reuse
-write_csv(articles, here::here("field_classification", "article_abstracts.csv"))
-```
-
-## Classification Run
 
 ```{r}
 #| label: run-coding
-#| eval: false
 
-# Load abstracts (from retrieval step above, or previously saved)
-articles <- read_csv(here::here("field_classification", "article_abstracts.csv"))
-
-# Batch classification with DeepInfra (default)
-# Prompt caching is automatic - keeps system prompt cached across requests
 results <- classify_articles_batch(
   articles_df = articles,
   title_col = "title",
   abstract_col = "abstract",
   journal_col = "source_display_name"
-  # Uses defaults: model = "openai/gpt-oss-120b", provider = "deepinfra"
 )
 
-# View cluster classifications
-results %>%
-  select(doi, title, cluster_id, confidence_cluster) %>%
-  head(10)
-
-# # For testing with OpenAI:
-# results_openai <- classify_articles_batch(
-#   articles_df = articles,
-#   title_col = "title",
-#   abstract_col = "abstract",
-#   journal_col = "source_display_name",
-#   model = "gpt-4o",
-#   provider = "openai"
-# )
-
 results <- classify_cluster_fields(
-  results, journal_col = "source_display_name",
+  results,
+  journal_col = "source_display_name",
   cluster_breakdowns = cluster_breakdowns
 )
 
 glimpse(results)
 
-write_csv(results, "classified_articles.csv")
-
+write_csv(
+  results,
+  here::here("field_classification", "classified_articles_pilot.csv")
+)
 ```
 
 ## Validation and Quality Checks
 
 ```{r}
 #| label: validation
-#| eval: false
 
-results %>% filter(confidence < .9) 
-
+results |> filter(confidence < .9)
 ```
 
 ## Appendix: Full Cluster List

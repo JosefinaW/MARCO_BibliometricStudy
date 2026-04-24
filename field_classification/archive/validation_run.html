@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="dcterms.date" content="2026-03-23">
+
+<title>Classification Validation Run</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="validation_run_files/libs/clipboard/clipboard.min.js"></script>
+<script src="validation_run_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="validation_run_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="validation_run_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="validation_run_files/libs/quarto-html/popper.min.js"></script>
+<script src="validation_run_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="validation_run_files/libs/quarto-html/anchor.min.js"></script>
+<link href="validation_run_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="validation_run_files/libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="validation_run_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="validation_run_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="validation_run_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#sample-dois" id="toc-sample-dois" class="nav-link" data-scroll-target="#sample-dois">Sample DOIs</a></li>
+  <li><a href="#retrieve-abstracts" id="toc-retrieve-abstracts" class="nav-link" data-scroll-target="#retrieve-abstracts">Retrieve Abstracts</a></li>
+  <li><a href="#classify-into-subject-areas" id="toc-classify-into-subject-areas" class="nav-link" data-scroll-target="#classify-into-subject-areas">Classify into Subject Areas</a></li>
+  <li><a href="#classify-into-subject-fields-areas-with-100-articles" id="toc-classify-into-subject-fields-areas-with-100-articles" class="nav-link" data-scroll-target="#classify-into-subject-fields-areas-with-100-articles">Classify into Subject Fields (areas with &gt;100 articles)</a></li>
+  <li><a href="#save-results" id="toc-save-results" class="nav-link" data-scroll-target="#save-results">Save Results</a></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Classification Validation Run</h1>
+<p class="subtitle lead">End-to-end test: abstract retrieval + LLM classification</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">March 23, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>Source all function definitions from the main pipeline (schemas, prompts, helpers, classification functions) without running the classification itself.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Allow duplicate chunk labels when purling the pipeline</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">knitr.duplicate.label =</span> <span class="st">"allow"</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract and source R code from the main pipeline</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># (all chunks with eval:true run — the run-coding chunk is eval:false so it's skipped)</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>pipeline_qmd <span class="ot">&lt;-</span> here<span class="sc">::</span><span class="fu">here</span>(</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"field_classification"</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="st">"article_classification_pipeline - integrated.qmd"</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>pipeline_r <span class="ot">&lt;-</span> knitr<span class="sc">::</span><span class="fu">purl</span>(pipeline_qmd, <span class="at">output =</span> <span class="fu">tempfile</span>(<span class="at">fileext =</span> <span class="st">".R"</span>), <span class="at">quiet =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(pipeline_r, <span class="at">local =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># ellmer::parallel_chat uses httr2::req_perform_parallel which has a cli progress</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="co"># bar that breaks inside knitr. Override classify functions to process sequentially.</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>classify_articles_sequential <span class="ot">&lt;-</span> <span class="cf">function</span>(</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  articles_df,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">title_col =</span> <span class="st">"title"</span>,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">abstract_col =</span> <span class="st">"abstract"</span>,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">journal_col =</span> <span class="st">"journal"</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">model =</span> <span class="st">"openai/gpt-oss-120b"</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">provider =</span> <span class="st">"deepinfra"</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>) {</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>  articles_list <span class="ot">&lt;-</span> articles_df <span class="sc">|&gt;</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rowwise</span>() <span class="sc">|&gt;</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">reframe</span>(</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>      <span class="at">article =</span> <span class="fu">toJSON</span>(</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>        <span class="fu">list</span>(</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>          <span class="at">article_title =</span> .data[[title_col]] <span class="sc">%||%</span> <span class="st">""</span>,</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>          <span class="at">article_abstract =</span> .data[[abstract_col]] <span class="sc">%||%</span> <span class="st">""</span>,</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>          <span class="at">journal_title =</span> .data[[journal_col]] <span class="sc">%||%</span> <span class="st">""</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>        <span class="at">auto_unbox =</span> <span class="cn">TRUE</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">|&gt;</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    <span class="fu">pull</span>(article) <span class="sc">|&gt;</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as.character</span>() <span class="sc">|&gt;</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="fu">clean_json_text</span>()</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>  n <span class="ot">&lt;-</span> <span class="fu">length</span>(articles_list)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>  cluster_ids <span class="ot">&lt;-</span> <span class="fu">character</span>(n)</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>  confidences <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n)</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>  secondary_ids <span class="ot">&lt;-</span> <span class="fu">character</span>(n)</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>  secondary_confs <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n)</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>  reasonings <span class="ot">&lt;-</span> <span class="fu">character</span>(n)</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Classifying %d articles into clusters (sequential)...</span><span class="sc">\n</span><span class="st">"</span>, n))</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_len</span>(n)) {</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (i <span class="sc">%%</span> <span class="dv">10</span> <span class="sc">==</span> <span class="dv">0</span> <span class="sc">||</span> i <span class="sc">==</span> n) <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"  %d / %d</span><span class="sc">\n</span><span class="st">"</span>, i, n))</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    chat <span class="ot">&lt;-</span> <span class="fu">create_cluster_chat</span>(<span class="at">model =</span> model, <span class="at">provider =</span> provider,</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>                                <span class="at">api_args =</span> <span class="fu">list</span>(<span class="at">temperature =</span> <span class="dv">0</span>))</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tryCatch</span>({</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>      chat<span class="sc">$</span><span class="fu">chat</span>(articles_list[i])</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>      turns <span class="ot">&lt;-</span> chat<span class="sc">$</span><span class="fu">get_turns</span>()</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>      assistant_turn <span class="ot">&lt;-</span> turns[[<span class="dv">2</span>]]</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>      content <span class="ot">&lt;-</span> assistant_turn<span class="sc">@</span>text</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>      parsed <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>(<span class="fu">fromJSON</span>(content),</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>        <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">list</span>(<span class="at">cluster_id =</span> <span class="cn">NA_character_</span>, <span class="at">confidence =</span> <span class="cn">NA_real_</span>,</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">secondary_cluster_id =</span> <span class="cn">NA_character_</span>,</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">secondary_confidence =</span> <span class="cn">NA_real_</span>))</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>      reasoning <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>(</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>        assistant_turn<span class="sc">@</span>json<span class="sc">$</span>choices[[<span class="dv">1</span>]]<span class="sc">$</span>message<span class="sc">$</span>reasoning_content <span class="sc">%||%</span> <span class="cn">NA_character_</span>,</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>        <span class="at">error =</span> <span class="cf">function</span>(e) <span class="cn">NA_character_</span>)</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>      cluster_ids[i] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>cluster_id <span class="sc">%||%</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>      confidences[i] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>confidence <span class="sc">%||%</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>      secondary_ids[i] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>secondary_cluster_id <span class="sc">%||%</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>      secondary_confs[i] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>secondary_confidence <span class="sc">%||%</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>      reasonings[i] <span class="ot">&lt;-</span> reasoning</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>    }, <span class="at">error =</span> <span class="cf">function</span>(e) {</span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>      <span class="fu">message</span>(<span class="st">"  Error on article "</span>, i, <span class="st">": "</span>, e<span class="sc">$</span>message)</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>      cluster_ids[i] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>      confidences[i] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>      secondary_ids[i] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>      secondary_confs[i] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>      reasonings[i] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>    })</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>  articles_df <span class="sc">|&gt;</span></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>    <span class="fu">bind_cols</span>(<span class="fu">tibble</span>(</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>      <span class="at">cluster_id =</span> cluster_ids,</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>      <span class="at">confidence =</span> confidences,</span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>      <span class="at">secondary_cluster_id =</span> secondary_ids,</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>      <span class="at">secondary_confidence =</span> secondary_confs,</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>      <span class="at">reasoning =</span> reasonings</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    ))</span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>classify_fields_sequential <span class="ot">&lt;-</span> <span class="cf">function</span>(</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>  cluster_results,</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>  cluster_breakdowns,</span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>  <span class="at">title_col =</span> <span class="st">"title"</span>,</span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>  <span class="at">abstract_col =</span> <span class="st">"abstract"</span>,</span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>  <span class="at">journal_col =</span> <span class="st">"journal"</span>,</span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>  <span class="at">model =</span> <span class="st">"openai/gpt-oss-120b"</span>,</span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>  <span class="at">provider =</span> <span class="st">"deepinfra"</span>,</span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>  <span class="at">field_threshold =</span> <span class="dv">100</span></span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>) {</span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>  cluster_counts <span class="ot">&lt;-</span> cluster_results <span class="sc">|&gt;</span> <span class="fu">count</span>(cluster_id) <span class="sc">|&gt;</span> <span class="fu">arrange</span>(<span class="fu">desc</span>(n))</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== CLUSTERS REQUIRING FIELD CLASSIFICATION ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>  clusters_above_threshold <span class="ot">&lt;-</span> cluster_counts <span class="sc">|&gt;</span> <span class="fu">filter</span>(n <span class="sc">&gt;=</span> field_threshold)</span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(clusters_above_threshold) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(clusters_above_threshold)</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"No clusters with &gt;= "</span>, field_threshold, <span class="st">" articles</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span>(cluster_results)</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a>  results_with_fields <span class="ot">&lt;-</span> <span class="fu">tibble</span>()</span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-117"><a href="#cb1-117" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (cid <span class="cf">in</span> clusters_above_threshold<span class="sc">$</span>cluster_id) {</span>
+<span id="cb1-118"><a href="#cb1-118" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="sc">!</span>(cid <span class="sc">%in%</span> <span class="fu">names</span>(cluster_breakdowns))) {</span>
+<span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a>      <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Note: No field schema available for cluster '%s'</span><span class="sc">\n</span><span class="st">"</span>, cid))</span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a>      <span class="cf">next</span></span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a>    config <span class="ot">&lt;-</span> cluster_breakdowns[[cid]]</span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a>    articles_idx <span class="ot">&lt;-</span> <span class="fu">which</span>(cluster_results<span class="sc">$</span>cluster_id <span class="sc">==</span> cid)</span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a>    n_articles <span class="ot">&lt;-</span> <span class="fu">length</span>(articles_idx)</span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">Classifying %d %s articles into fields (sequential)...</span><span class="sc">\n</span><span class="st">"</span>,</span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a>                n_articles, cid))</span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a>    field_ids <span class="ot">&lt;-</span> <span class="fu">character</span>(n_articles)</span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a>    field_confs <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n_articles)</span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a>    field_reasonings <span class="ot">&lt;-</span> <span class="fu">character</span>(n_articles)</span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> (j <span class="cf">in</span> <span class="fu">seq_len</span>(n_articles)) {</span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>      idx <span class="ot">&lt;-</span> articles_idx[j]</span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> (j <span class="sc">%%</span> <span class="dv">10</span> <span class="sc">==</span> <span class="dv">0</span> <span class="sc">||</span> j <span class="sc">==</span> n_articles) <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"  %d / %d</span><span class="sc">\n</span><span class="st">"</span>, j, n_articles))</span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a>      article_json <span class="ot">&lt;-</span> <span class="fu">toJSON</span>(<span class="fu">list</span>(</span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a>        <span class="at">article_title =</span> cluster_results[[title_col]][idx] <span class="sc">%||%</span> <span class="st">""</span>,</span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a>        <span class="at">article_abstract =</span> cluster_results[[abstract_col]][idx] <span class="sc">%||%</span> <span class="st">""</span>,</span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a>        <span class="at">journal_title =</span> cluster_results[[journal_col]][idx] <span class="sc">%||%</span> <span class="st">""</span></span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a>      ), <span class="at">auto_unbox =</span> <span class="cn">TRUE</span>) <span class="sc">|&gt;</span> <span class="fu">as.character</span>() <span class="sc">|&gt;</span> <span class="fu">clean_json_text</span>()</span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a>      field_chat <span class="ot">&lt;-</span> config<span class="sc">$</span><span class="fu">chat_constructor</span>(<span class="at">model =</span> model, <span class="at">provider =</span> provider,</span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a>                                            <span class="at">api_args =</span> <span class="fu">list</span>(<span class="at">temperature =</span> <span class="dv">0</span>))</span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>      <span class="fu">tryCatch</span>({</span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>        field_chat<span class="sc">$</span><span class="fu">chat</span>(article_json)</span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>        turns <span class="ot">&lt;-</span> field_chat<span class="sc">$</span><span class="fu">get_turns</span>()</span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>        assistant_turn <span class="ot">&lt;-</span> turns[[<span class="dv">2</span>]]</span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a>        parsed <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>(<span class="fu">fromJSON</span>(assistant_turn<span class="sc">@</span>text),</span>
+<span id="cb1-151"><a href="#cb1-151" aria-hidden="true" tabindex="-1"></a>          <span class="at">error =</span> <span class="cf">function</span>(e) <span class="fu">list</span>(<span class="at">field_id =</span> <span class="cn">NA_character_</span>, <span class="at">confidence =</span> <span class="cn">NA_real_</span>))</span>
+<span id="cb1-152"><a href="#cb1-152" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-153"><a href="#cb1-153" aria-hidden="true" tabindex="-1"></a>        reasoning <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>(</span>
+<span id="cb1-154"><a href="#cb1-154" aria-hidden="true" tabindex="-1"></a>          assistant_turn<span class="sc">@</span>json<span class="sc">$</span>choices[[<span class="dv">1</span>]]<span class="sc">$</span>message<span class="sc">$</span>reasoning_content <span class="sc">%||%</span> <span class="cn">NA_character_</span>,</span>
+<span id="cb1-155"><a href="#cb1-155" aria-hidden="true" tabindex="-1"></a>          <span class="at">error =</span> <span class="cf">function</span>(e) <span class="cn">NA_character_</span>)</span>
+<span id="cb1-156"><a href="#cb1-156" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-157"><a href="#cb1-157" aria-hidden="true" tabindex="-1"></a>        field_ids[j] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>field_id <span class="sc">%||%</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-158"><a href="#cb1-158" aria-hidden="true" tabindex="-1"></a>        field_confs[j] <span class="ot">&lt;-</span> parsed<span class="sc">$</span>confidence <span class="sc">%||%</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-159"><a href="#cb1-159" aria-hidden="true" tabindex="-1"></a>        field_reasonings[j] <span class="ot">&lt;-</span> reasoning</span>
+<span id="cb1-160"><a href="#cb1-160" aria-hidden="true" tabindex="-1"></a>      }, <span class="at">error =</span> <span class="cf">function</span>(e) {</span>
+<span id="cb1-161"><a href="#cb1-161" aria-hidden="true" tabindex="-1"></a>        <span class="fu">message</span>(<span class="st">"  Error on field article "</span>, j, <span class="st">": "</span>, e<span class="sc">$</span>message)</span>
+<span id="cb1-162"><a href="#cb1-162" aria-hidden="true" tabindex="-1"></a>        field_ids[j] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-163"><a href="#cb1-163" aria-hidden="true" tabindex="-1"></a>        field_confs[j] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_real_</span></span>
+<span id="cb1-164"><a href="#cb1-164" aria-hidden="true" tabindex="-1"></a>        field_reasonings[j] <span class="ot">&lt;&lt;-</span> <span class="cn">NA_character_</span></span>
+<span id="cb1-165"><a href="#cb1-165" aria-hidden="true" tabindex="-1"></a>      })</span>
+<span id="cb1-166"><a href="#cb1-166" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-167"><a href="#cb1-167" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-168"><a href="#cb1-168" aria-hidden="true" tabindex="-1"></a>    current_cluster <span class="ot">&lt;-</span> cid</span>
+<span id="cb1-169"><a href="#cb1-169" aria-hidden="true" tabindex="-1"></a>    current_results <span class="ot">&lt;-</span> cluster_results <span class="sc">|&gt;</span></span>
+<span id="cb1-170"><a href="#cb1-170" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>(cluster_id <span class="sc">==</span> current_cluster) <span class="sc">|&gt;</span></span>
+<span id="cb1-171"><a href="#cb1-171" aria-hidden="true" tabindex="-1"></a>      <span class="fu">bind_cols</span>(<span class="fu">tibble</span>(</span>
+<span id="cb1-172"><a href="#cb1-172" aria-hidden="true" tabindex="-1"></a>        <span class="at">field_id =</span> field_ids,</span>
+<span id="cb1-173"><a href="#cb1-173" aria-hidden="true" tabindex="-1"></a>        <span class="at">field_confidence =</span> field_confs,</span>
+<span id="cb1-174"><a href="#cb1-174" aria-hidden="true" tabindex="-1"></a>        <span class="at">field_reasoning =</span> field_reasonings</span>
+<span id="cb1-175"><a href="#cb1-175" aria-hidden="true" tabindex="-1"></a>      ))</span>
+<span id="cb1-176"><a href="#cb1-176" aria-hidden="true" tabindex="-1"></a>    cluster_results <span class="ot">&lt;-</span> cluster_results <span class="sc">|&gt;</span> <span class="fu">filter</span>(cluster_id <span class="sc">!=</span> current_cluster)</span>
+<span id="cb1-177"><a href="#cb1-177" aria-hidden="true" tabindex="-1"></a>    results_with_fields <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(results_with_fields, current_results)</span>
+<span id="cb1-178"><a href="#cb1-178" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-179"><a href="#cb1-179" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-180"><a href="#cb1-180" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_rows</span>(results_with_fields, cluster_results)</span>
+<span id="cb1-181"><a href="#cb1-181" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+</div>
+</section>
+<section id="sample-dois" class="level2">
+<h2 class="anchored" data-anchor-id="sample-dois">Sample DOIs</h2>
+<p>Draw 250 unique <code>doi_o</code> values from the main COS dataset.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cos_data <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"2025-02-07_COSdata_validated_delivered.csv"</span>),</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>                     <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>dois_all <span class="ot">&lt;-</span> <span class="fu">unique</span>(<span class="fu">na.omit</span>(cos_data<span class="sc">$</span>doi_o))</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>n_sample <span class="ot">&lt;-</span> <span class="fu">min</span>(<span class="dv">250</span>, <span class="fu">length</span>(dois_all))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>dois_sample <span class="ot">&lt;-</span> <span class="fu">sample</span>(dois_all, n_sample)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Sampled %d unique doi_o (out of %d available)</span><span class="sc">\n</span><span class="st">"</span>, n_sample, <span class="fu">length</span>(dois_all)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Sampled 250 unique doi_o (out of 275 available)</code></pre>
+</div>
+</div>
+</section>
+<section id="retrieve-abstracts" class="level2">
+<h2 class="anchored" data-anchor-id="retrieve-abstracts">Retrieve Abstracts</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>articles <span class="ot">&lt;-</span> <span class="fu">fetch_abstracts</span>(dois_sample)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Querying OpenAlex for 250 DOIs...</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Requesting url:
+&lt;https://api.openalex.org/works?filter=doi%3A10.1073%2Fpnas.1701916114%7C10.1037%2F0278-7393.34.3.478%7C10.1017%2Fepi.2013.23%7C10.1126%2Fscience.1189993%7C10.1037%2F0278-7393.34.2.302%7C10.1037%2Fa0016795%7C10.1257%2Faer.104.6.1735%7C10.1177%2F0956797619854706%7C10.1177%2F1948550619843931%7C10.1177%2F0956797615588195%7C10.1037%2F0022-3514.94.4.560%7C10.1111%2Fecin.12470%7C10.1145%2F3105726.3106182%7C10.1257%2Faer.101.7.3109%7C10.1177%2F0956797616640705%7C10.4148%2F1944-9771.1299%7C10.1177%2F0093650215609676%7C10.1257%2Faer.102.1.337%7C10.1037%2F0278-7393.34.1.167%7C10.1073%2Fpnas.1516868113%7C10.1037%2F0278-7393.34.1.186%7C10.1037%2F0278-7393.34.3.495%7C10.1073%2Fpnas.1501592112%7C10.1111%2Fj.1467-9280.2008.02227.x%7C10.1037%2Fa0021524%7C10.1111%2Fj.1467-9280.2009.02426.x%7C10.1177%2F0956797618780643%7C10.1257%2Faer.102.5.2018%7C10.1257%2Faer.101.2.526%7C10.1177%2F0146167214524992%7C10.1111%2Fj.1467-9280.2008.02041.x%7C10.1111%2Flang.12161%7C10.1038%2Fnature15392%7C10.1037%2F0022-3514.94.2.94.2.196%7C10.1111%2Fj.1551-6709.2010.01161.x%7C10.1016%2Fj.neuropsychologia.2009.05.011%7C10.3758%2Fs13428-021-01694-3%7C10.1037%2F0022-3514.94.4.672%7C10.1037%2F0278-7393.34.1.204%7C10.1177%2F0146167215580776%7C10.1037%2Fpspi0000109%7C10.1037%2F0278-7393.34.1.146%7C10.1126%2Fscience.1238041%7C10.1177%2F0956797618760784%7C10.1007%2Fs11858-016-0819-3%7C10.1111%2Fj.1467-9280.2008.02040.x%7C10.1037%2F0278-7393.34.1.50%7C10.1016%2Fj.obhdp.2004.12.002%7C10.1177%2F0956797616639727%7C10.1037%2F0022-3514.94.3.429&gt;
+ℹ Getting 1 page of results with a total of 50 records...
+Requesting url:
+&lt;https://api.openalex.org/works?filter=doi%3A10.1111%2Fj.1467-9280.2008.02085.x%7C10.1073%2Fpnas.1519401113%7C10.1257%2Faer.101.2.470%7C10.1177%2F0956797611414726%7C10.1037%2Fa0015960%7C10.1038%2Fs41598-018-30314-y%7C10.1177%2F0956797611429579%7C10.1016%2Fj.cognition.2013.02.008%7C10.1037%2F0278-7393.34.2.369%7C10.1080%2F09515089.2014.894431%7C10.1093%2Fqje%2Fqjt035%7C10.1002%2Fjeab.432%7C10.1037%2F0022-3514.94.1.48%7C10.1037%2F0021-9010.77.4.419%7C10.1177%2F0956797615608267%7C10.1111%2F1467-8284.00419%7C10.1126%2Fscience.1191465%7C10.1126%2Fscience.1211180%7C10.1111%2Fj.1551-6709.2010.01164.x%7C10.1037%2F0278-7393.34.2.399%7C10.1177%2F0956797616685771%7C10.1002%2Fbdm.586%7C10.1037%2F0278-7393.34.3.546%7C10.1257%2Faer.101.4.1211%7C10.1073%2Fpnas.2009030117%7C10.1037%2F0022-3514.94.3.382%7C10.1038%2Fnature12774%7C10.1126%2Fscience.1190792%7C10.1073%2Fpnas.1805284115%7C10.1037%2Fa0031047%7C10.1073%2Fpnas.1601280113%7C10.1037%2F0278-7393.34.1.243%7C10.1371%2Fjournal.pone.0154854%7C10.1017%2FS1366728914000273%7C10.1037%2F0022-3514.94.1.116%7C10.1073%2Fpnas.1616921114%7Cdja%CC%88rv_2018%7C10.1037%2F%2F0022-3514.83.1.44%7C10.1073%2Fpnas.1707040114%7C10.1037%2F0096-3445.136.2.241%7C10.1177%2F0956797620927967%7C10.1177%2F0956797613494853%7C10.1038%2Fs41598-019-57204-1%7C10.1073%2Fpnas.0908963106%7C10.1177%2F0956797617705399%7C10.1037%2F0278-7393.34.1.97%7C10.1016%2Fj.jml.2006.02.004%7C10.1111%2Fj.1551-6709.2011.01210.x%7C10.1016%2F0022-1031%2877%2990049-X%7C10.1037%2F0022-3514.94.3.545&gt;
+ℹ Getting 1 page of results with a total of 49 records...
+Requesting url:
+&lt;https://api.openalex.org/works?filter=doi%3A10.1111%2Fj.1468-0068.2010.00795.x%7C10.1111%2Fj.1467-9280.2008.02081.x%7C10.1037%2F0022-3514.95.1.76%7C10.1073%2Fpnas.1717092115%7C10.1037%2F0278-7393.34.3.439%7C10.1111%2F1467-9280.00334%7C10.1111%2Fj.1467-9280.2008.02092.x%7C10.1037%2F0022-3514.95.2.420%7C10.1037%2Fa0035663%7C10.1016%2Fj.jesp.2018.05.006%7C10.1073%2Fpnas.2120668119%7C10.1287%2Forsc.2021.1456%7C10.1037%2F0022-3514.94.4.615%7C10.1037%2F0022-3514.94.2.245%7C10.1075%2Fresla.17019.loz%7C10.1037%2Fxge0001195%7C10.1126%2Fscience.1222426%7C10.1037%2F0022-3514.94.4.647%7C10.1111%2Fj.1467-9280.2008.02053.x%7C10.1037%2F0278-7393.34.1.219%7C10.1086%2F268936%7C10.1016%2Fj.jesp.2020.104019%7C10.1037%2F0278-7393.34.1.230%7C10.1037%2Fa0019689%7C10.1073%2Fpnas.1216438110%7C10.1257%2Faer.104.11.3434%7C10.1177%2F0956797616669947%7C10.1089%2Fcyber.2015.0311%7C10.1177%2F01461672952111004%7C10.1002%2Fpam.21702%7C10.1257%2Faer.102.2.720%7C10.1073%2Fpnas.1805327115%7C10.3389%2Ffpsyg.2014.01276%7C10.1073%2Fpnas.1610834113%7C10.1093%2Fgeronb%2Fgbx099%7C10.1257%2Faer.101.6.2562%7C10.1111%2F%20j.1468-0017.2006.00297.x%7C10.1016%2Fj.cognition.2016.06.011%7C10.1073%2Fpnas.1705238114%7C10.1037%2F0022-3514.94.4.718%7C10.1177%2F0956797614547705%7C10.1037%2F0278-7393.34.1.249%7C10.1037%2Fa0012833%7C10.1037%2F0022-3514.74.3.774%7C10.1111%2Fj.1467-9280.2008.02052.x%7C10.1177%2F0956797611435919%7C10.1037%2F0278-7393.34.1.80%7C10.1177%2F0146167207309195%7C10.1038%2Fnature11467%7C10.1177%2F0956797619879441&gt;
+ℹ Getting 1 page of results with a total of 49 records...
+Requesting url:
+&lt;https://api.openalex.org/works?filter=doi%3A10.1016%2Fj.cognition.2015.01.013%7C10.1037%2F0022-3514.73.4.733%7C10.1177%2F0956797618806296%7C10.1257%2Faer.102.2.865%7C10.1037%2F0022-3514.94.1.1%7C10.1016%2Fj.neuroimage.2006.11.048%7C10.1093%2Fanalys%2F63.3.190%7C10.1037%2F0278-7393.34.2.430%7C10.1371%2Fjournal.pone.0071475%7C10.1037%2F0278-7393.34.1.128%7C10.1177%2F0956797614558718%7C10.3758%2FBF03197186%7C10.1073%2Fpnas.1606574113%7C10.1016%2F0010-0285%2883%2990002-6%7C10.1037%2F0022-3514.94.4.696%7C10.1073%2Fpnas.1517662112%7C10.1111%2Fj.1467-9280.2008.02061.x%7C10.1111%2Fj.1467-9280.2007.02004.x%7C10.1037%2F0278-7393.34.2.408%7C10.1111%2Fj.1467-9280.2008.02057.x%7C10.1111%2Fj.1467-9280.2008.02089.x%7C10.1111%2Fj.1933-1592.2012.00609.x%7C10.1037%2F0022-3514.94.1.16%7C10.1177%2F0956797610397956%7C10.1016%2Fj.learninstruc.2014.08.004%7C10.1073%2Fpnas.1704032114%7C10.1111%2Fj.1467-9280.2008.02066.x%7C10.1126%2Fscience.1221936%7C10.1073%2Fpnas.1706253114%7C10.1257%2Faer.102.2.834%7C10.1111%2Fj.1467-9280.2008.02049.x%7C10.1037%2F0022-3514.94.3.516%7C10.1177%2F0956797615572231%7C10.1177%2F1948550612457688%7C10.1177%2F0956797618788882%7C10.1257%2Faer.102.7.3317%7C10.1126%2Fscience.1199427%7C10.1038%2Fs41467-018-06785-y%7C10.1111%2Fj.1467-9280.2008.02039.x%7C10.1126%2Fscience.1199327%7C10.1073%2Fpnas.2014505117%7C10.1037%2F0278-7393.34.1.65%7C10.1073%2Fpnas.1523586113%7C10.1037%2F0022-3514.94.1.91%7C10.1073%2Fpnas.1508932113%7C10.1037%2F0022-3514.95.2.274%7C10.1111%2Fj.1467-9280.2008.02080.x%7C10.1073%2Fpnas.1722664115%7C10.1111%2Fj.1467-9280.2008.02051.x%7C10.1163%2F156853706776931222&gt;
+ℹ Getting 1 page of results with a total of 50 records...
+Requesting url:
+&lt;https://api.openalex.org/works?filter=doi%3A10.1086%2F269239%7C10.1002%2Fjeab.705%7C10.5840%2Fjphil20111081238%7C10.1111%2Fj.1467-9280.2008.02042.x%7C10.1037%2F0022-3514.94.3.495%7C10.1073%2Fpnas.1607330114%7C10.1111%2Fj.1467-9280.2008.02078.x%7C10.1002%2F%28SICI%291099-0771%28199806%2911%3A2%253C107%3A%3AAID-BDM292%253E3.0.CO%3B2-Y%7C10.1037%2F0022-3514.95.2.293%7C10.1126%2Fscience.1239918%7C10.1007%2Fs10802-020-00712-w%7C10.1073%2Fpnas.2218961120%7C10.1037%2Fa0032108%7C10.1111%2Fj.1467-9280.2008.02069.x%7C10.1257%2Faer.101.2.927%7C10.1037%2F0022-3514.94.1.158%7C10.1016%2Fj.jesp.2020.104080%7C10.1038%2Fnclimate2093%7C10.1073%2Fpnas.1516047113%7C10.1080%2F0951508042000202354%7C10.1177%2F0956797611434537%7C10.1037%2F0278-7393.34.3.524%7C10.1109%2FTSE.2016.2527791%7C10.1037%2F0278-7393.34.2.343%7C10.1111%2Fj.1468-0017.2006.00297.x%7C10.1111%2Fj.1467-9280.2008.02091.x%7C10.1126%2Fscience.1250830%7C10.1111%2Fj.1467-9280.2008.02044.x%7C10.1177%2F0267658310386439%7C10.1111%2Fj.1467-9280.2008.02077.x%7C10.1037%2Fa0019006%7C10.1038%2Fnature13530%7C10.1037%2F0022-3514.94.4.600%7C10.1037%2Fa0034462%7C10.1111%2Fj.1467-9280.2006.01704.x%7C10.1111%2Fj.1467-9280.2008.02046.x%7C10.1016%2Fj.jsams.2017.06.007%7C10.1037%2F0278-7393.34.1.237%7C10.1111%2Fj.1467-9280.2008.02098.x%7C10.1016%2Fj.cognition.2017.06.025%7C10.1037%2F0278-7393.34.2.353%7C10.1037%2F0278-7393.34.3.460%7C10.1177%2F0956797611428079%7C10.1073%2Fpnas.1505067112%7C10.1037%2F0096-3445.136.4.569%7C10.1257%2Faer.103.4.1325%7C10.1016%2Fj.obhdp.2006.10.001%7C10.1007%2Fs40732-020-00453-8%7C10.1073%2Fpnas.1707719114%7C10.1016%2Fj.biopsycho.2018.08.007&gt;
+ℹ Getting 1 page of results with a total of 49 records...</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  OpenAlex returned abstracts for 215 / 250 DOIs</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in fetch_abstracts(dois_sample): No SCOPUS_API_KEY set; skipping Scopus
+fallback for 35 DOIs without abstracts</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in fetch_abstracts(dois_sample): 35 DOIs have no abstract from either
+source: 10.1038/nature15392, 10.1016/j.neuropsychologia.2009.05.011,
+10.3758/s13428-021-01694-3, 10.1007/s11858-016-0819-3,
+10.1111/j.1467-9280.2008.02040.x...</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Total: 215 / 250 DOIs with abstracts</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">Abstracts retrieved: %d / %d</span><span class="sc">\n</span><span class="st">"</span>, <span class="fu">nrow</span>(articles), n_sample))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Abstracts retrieved: 215 / 250</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"Missing: %d</span><span class="sc">\n</span><span class="st">"</span>, n_sample <span class="sc">-</span> <span class="fu">nrow</span>(articles)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Missing: 35</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Abstract Source Breakdown ===</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== Abstract Source Breakdown ===</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">count</span>(articles, abstract_source))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 2
+  abstract_source     n
+  &lt;chr&gt;           &lt;int&gt;
+1 openalex          215</code></pre>
+</div>
+</div>
+</section>
+<section id="classify-into-subject-areas" class="level2">
+<h2 class="anchored" data-anchor-id="classify-into-subject-areas">Classify into Subject Areas</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>results <span class="ot">&lt;-</span> <span class="fu">classify_articles_sequential</span>(</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a> <span class="at">articles_df =</span> articles,</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a> <span class="at">title_col =</span> <span class="st">"title"</span>,</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a> <span class="at">abstract_col =</span> <span class="st">"abstract"</span>,</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a> <span class="at">journal_col =</span> <span class="st">"source_display_name"</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Classifying 215 articles into clusters (sequential)...
+  10 / 215
+  20 / 215
+  30 / 215
+  40 / 215
+  50 / 215
+  60 / 215
+  70 / 215
+  80 / 215
+  90 / 215
+  100 / 215
+  110 / 215
+  120 / 215
+  130 / 215
+  140 / 215
+  150 / 215
+  160 / 215
+  170 / 215
+  180 / 215
+  190 / 215
+  200 / 215
+  210 / 215
+  215 / 215</code></pre>
+</div>
+</div>
+</section>
+<section id="classify-into-subject-fields-areas-with-100-articles" class="level2">
+<h2 class="anchored" data-anchor-id="classify-into-subject-fields-areas-with-100-articles">Classify into Subject Fields (areas with &gt;100 articles)</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>results <span class="ot">&lt;-</span> <span class="fu">classify_fields_sequential</span>(</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  results,</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">cluster_breakdowns =</span> cluster_breakdowns,</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">journal_col =</span> <span class="st">"source_display_name"</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== CLUSTERS REQUIRING FIELD CLASSIFICATION ===
+# A tibble: 1 × 2
+  cluster_id     n
+  &lt;chr&gt;      &lt;int&gt;
+1 psychology   175
+
+Classifying 175 psychology articles into fields (sequential)...
+  10 / 175
+  20 / 175
+  30 / 175
+  40 / 175
+  50 / 175
+  60 / 175
+  70 / 175
+  80 / 175
+  90 / 175
+  100 / 175
+  110 / 175
+  120 / 175
+  130 / 175
+  140 / 175
+  150 / 175
+  160 / 175
+  170 / 175
+  175 / 175</code></pre>
+</div>
+</div>
+</section>
+<section id="save-results" class="level2">
+<h2 class="anchored" data-anchor-id="save-results">Save Results</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Save the validation input data (doi, title, abstract, journal, source)</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  articles <span class="sc">|&gt;</span> <span class="fu">select</span>(doi, title, abstract, source_display_name, abstract_source),</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"field_classification"</span>, <span class="st">"validation_articles.csv"</span>)</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Save classification results</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="fu">write_csv</span>(results, here<span class="sc">::</span><span class="fu">here</span>(<span class="st">"field_classification"</span>, <span class="st">"validation_classified.csv"</span>))</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Saved validation_articles.csv and validation_classified.csv</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Saved validation_articles.csv and validation_classified.csv</code></pre>
+</div>
+</div>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">Summary</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"=== Subject Area Distribution ===</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>=== Subject Area Distribution ===</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>results <span class="sc">|&gt;</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">count</span>(cluster_id, <span class="at">sort =</span> <span class="cn">TRUE</span>) <span class="sc">|&gt;</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="at">n =</span> <span class="cn">Inf</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 2
+   cluster_id                                     n
+   &lt;chr&gt;                                      &lt;int&gt;
+ 1 psychology                                   175
+ 2 economics_business                            22
+ 3 philosophy                                     6
+ 4 general_comparative_literature_linguistics     3
+ 5 biology                                        2
+ 6 political_science                              2
+ 7 computer_science                               1
+ 8 education                                      1
+ 9 media_communication_studies                    1
+10 public_administration                          1</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Confidence Distribution ===</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== Confidence Distribution ===</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(results<span class="sc">$</span>confidence)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ 0.7000  0.9600  0.9800  0.9603  0.9900  0.9900 </code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Low Confidence Articles (&lt; 0.8) ===</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== Low Confidence Articles (&lt; 0.8) ===</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>low_conf <span class="ot">&lt;-</span> results <span class="sc">|&gt;</span> <span class="fu">filter</span>(confidence <span class="sc">&lt;</span> <span class="fl">0.8</span>)</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"%d articles with confidence &lt; 0.8</span><span class="sc">\n</span><span class="st">"</span>, <span class="fu">nrow</span>(low_conf)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>2 articles with confidence &lt; 0.8</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">nrow</span>(low_conf) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>  low_conf <span class="sc">|&gt;</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(doi, title, cluster_id, confidence) <span class="sc">|&gt;</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="at">n =</span> <span class="dv">20</span>)</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 2 × 4
+  doi                     title                            cluster_id confidence
+  &lt;chr&gt;                   &lt;chr&gt;                            &lt;chr&gt;           &lt;dbl&gt;
+1 10.1073/pnas.1505067112 Selfish third parties act as pe… psychology       0.73
+2 10.1073/pnas.1606574113 When fairness matters less than… economics…       0.7 </code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Secondary Subject Area Assignments ===</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== Secondary Subject Area Assignments ===</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>multi <span class="ot">&lt;-</span> results <span class="sc">|&gt;</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(secondary_cluster_id))</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">"%d articles assigned a secondary Subject Area</span><span class="sc">\n</span><span class="st">"</span>, <span class="fu">nrow</span>(multi)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>41 articles assigned a secondary Subject Area</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">nrow</span>(multi) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>  multi <span class="sc">|&gt;</span></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(doi, title, cluster_id, secondary_cluster_id, secondary_confidence) <span class="sc">|&gt;</span></span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="at">n =</span> <span class="dv">20</span>)</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 41 × 5
+   doi                title cluster_id secondary_cluster_id secondary_confidence
+   &lt;chr&gt;              &lt;chr&gt; &lt;chr&gt;      &lt;chr&gt;                               &lt;dbl&gt;
+ 1 10.1126/science.1… Pove… psychology economics_business                   0.58
+ 2 10.4148/1944-9771… The … psychology economics_business                   0.6 
+ 3 10.1371/journal.p… Reas… psychology general_comparative…                 0.6 
+ 4 10.1073/pnas.1707… Sear… psychology economics_business                   0.38
+ 5 10.1073/pnas.1519… Ecol… psychology sociology_social_sc…                 0.48
+ 6 10.1073/pnas.1805… How … psychology sociology_social_sc…                 0.58
+ 7 10.1073/pnas.0908… Synt… psychology general_comparative…                 0.5 
+ 8 10.1126/science.1… Some… psychology economics_business                   0.4 
+ 9 10.1073/pnas.1216… Rati… psychology general_comparative…                 0.38
+10 10.1073/pnas.1717… Trai… psychology health_sciences_gen…                 0.6 
+11 10.1073/pnas.1610… Past… psychology political_science                    0.65
+12 10.1073/pnas.2120… Rela… psychology sociology_social_sc…                 0.38
+13 10.1093/geronb/gb… Are … psychology sociology_social_sc…                 0.4 
+14 10.1126/science.1… Writ… psychology education                            0.4 
+15 10.1073/pnas.1706… Expo… psychology political_science                    0.6 
+16 10.1073/pnas.1722… Soci… psychology political_science                    0.6 
+17 10.1163/156853706… The … psychology cultural_studies                     0.58
+18 10.1073/pnas.1516… Raci… psychology health_sciences_gen…                 0.71
+19 10.1126/science.1… Read… psychology general_comparative…                 0.6 
+20 10.1111/j.1468-00… A Di… psychology philosophy                           0.6 
+# ℹ 21 more rows</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="st">"field_id"</span> <span class="sc">%in%</span> <span class="fu">names</span>(results)) {</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">=== Subject Field Distribution (where assigned) ===</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>  results <span class="sc">|&gt;</span></span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(field_id)) <span class="sc">|&gt;</span></span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">count</span>(cluster_id, field_id, <span class="at">sort =</span> <span class="cn">TRUE</span>) <span class="sc">|&gt;</span></span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(<span class="at">n =</span> <span class="cn">Inf</span>)</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+=== Subject Field Distribution (where assigned) ===
+# A tibble: 9 × 3
+  cluster_id field_id                                            n
+  &lt;chr&gt;      &lt;chr&gt;                                           &lt;int&gt;
+1 psychology cognitive_psychology                               85
+2 psychology social_psychology                                  73
+3 psychology differential_personality_diagnostics                5
+4 psychology biological_neuropsychology                          4
+5 psychology developmental_psychology                            3
+6 psychology educational_psychology                              1
+7 psychology methods_evaluation_psychology                       1
+8 psychology occupational_organisational_business_psychology     1
+9 psychology psychology_general                                  1</code></pre>
+</div>
+</div>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

@@ -1,0 +1,49 @@
+================================================================================ 
+API TEST LOG (prompt-only JSON) - 2026-01-30 18:28:00 
+================================================================================ 
+
+=== FULL RESPONSE ===
+
+{
+  "id": "chatcmpl-RjWdWiheY0NXKO1QJZbRlsC1",
+  "object": "chat.completion",
+  "created": 1769797680,
+  "model": "openai/gpt-oss-120b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"cluster_id\": \"psychology\",\n  \"confidence\": 0.96\n}",
+        "reasoning_content": "We need to classify article. Title: \"The Effect of Sleep on Memory Consolidation\". Abstract: studied how sleep affects recall in participants using within-subjects design. Journal: Journal of Cognitive Psychology. This is psychology (cognitive). So cluster: psychology. Confidence high ~0.95.",
+        "name": {},
+        "tool_calls": []
+      },
+      "finish_reason": "stop",
+      "logprobs": {}
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 3745,
+    "total_tokens": 3834,
+    "completion_tokens": 89,
+    "estimated_cost": 0.0002,
+    "prompt_tokens_details": {}
+  }
+}
+
+=== EXTRACTED VALUES ===
+Content: {
+  "cluster_id": "psychology",
+  "confidence": 0.96
+} 
+
+Parsed cluster_id: psychology 
+Parsed confidence: 0.96 
+
+Reasoning: We need to classify article. Title: "The Effect of Sleep on Memory Consolidation". Abstract: studied how sleep affects recall in participants using within-subjects design. Journal: Journal of Cognitive Psychology. This is psychology (cognitive). So cluster: psychology. Confidence high ~0.95. 
+
+=== USAGE ===
+Prompt tokens: 3745 
+Completion tokens: 89 
+Total tokens: 3834 
