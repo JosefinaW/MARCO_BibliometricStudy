@@ -16,7 +16,7 @@ if (!require(pacman)) install.packages("pacman")
 pacman::p_load(
   openalexR, cowplot, tidyverse, httr, jsonlite,
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
-  panelView, rscopus, httr2, URLencode
+  panelView, rscopus, httr2
 )
 ```
 # load dataset

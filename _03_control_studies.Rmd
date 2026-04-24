@@ -18,6 +18,9 @@ pacman::p_load(
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
   panelView
 )
+
+source("R/data_prep.R")
+
 ```
 
 #data loading
@@ -29,21 +32,6 @@ df_meta <- readRDS("data/metadata_OpenAlex.rds")
 
 # getting control studies
 
-```{r}
-# function to clean up the issn
-clean_issn <- function(x, validate = TRUE, repair_missing_check = FALSE) {
-  y <- str_to_upper(x)
-  y <- str_replace_all(y, "[^0-9X]", "") # keep only digits/X
-
-  # Must be 8 chars now to be considered an ISSN
-  y[nchar(y) != 8] <- NA_character_
-
-  # Insert hyphen
-  y <- ifelse(is.na(y), NA_character_, paste0(substr(y, 1, 4), "-", substr(y, 5, 8)))
-
-  y
-}
-```
 
 ```{r}
 # Tidy split + normalize + dedupe
@@ -67,61 +55,43 @@ email <- Sys.getenv("MY_EMAIL")
 options(openalexR.mailto = email)
 
 # assumes get_matches has columns: issn (e.g., "1234-5678") and year (integer)
-batch_size <- 50L
-rows_idx <- split(
-  seq_len(nrow(get_matches)),
-  ceiling(seq_along(seq_len(nrow(get_matches))) / batch_size)
+fetch_issn_year <- purrr::slowly(
+  purrr::safely(function(issn, year) {
+    message(sprintf("ISSN=%s, year=%s", issn, year))
+    oa_fetch(
+      entity = "works",
+      `primary_location.source.issn` = issn,
+      publication_year = year,
+      type = "article",
+      per_page = 200,
+      options = list(
+        select = c("id", "doi", "display_name", "publication_year", "primary_location")
+      ),
+      verbose = TRUE
+    )
+  }),
+  rate = purrr::rate_delay(0.2)
 )
 
-results <- list()
+results <- purrr::map2(
+  get_matches$issn, get_matches$year,
+  fetch_issn_year,
+  .progress = TRUE
+)
 
-for (b in seq_along(rows_idx)) {
-  idxs <- rows_idx[[b]]
-  message(sprintf(
-    "Batch %d/%d: rows %d–%d",
-    b, length(rows_idx), min(idxs), max(idxs)
-  ))
-
-  for (j in seq_along(idxs)) {
-    r <- idxs[j]
-    issn <- get_matches$issn[r]
-    yr <- get_matches$year[r]
-
-    message(sprintf(
-      "  Row %d in batch %d: ISSN=%s, year=%s",
-      j, b, issn, yr
-    ))
-
-    out <- try(
-      oa_fetch(
-        entity = "works",
-        `primary_location.source.issn` = issn, # one ISSN (this row)
-        publication_year = yr, # one year  (this row)
-        type = "article",
-        per_page = 200,
-        options = list(
-          select = c("id", "doi", "display_name", "publication_year", "primary_location")
-        ),
-        verbose = TRUE
-      ),
-      silent = TRUE
-    )
-
-    if (!inherits(out, "try-error") && is.data.frame(out) && nrow(out) > 0) {
-      results[[length(results) + 1]] <- out
-    } else {
-      warning(sprintf("    No data / failed for ISSN=%s, year=%s", issn, yr))
-    }
-
-    Sys.sleep(0.2) # small pause between row-queries
+# keep only successful, non-empty data frames; warn on the rest
+keep_df <- purrr::imap(results, function(r, i) {
+  issn <- get_matches$issn[i]; yr <- get_matches$year[i]
+  if (!is.null(r$error)) {
+    warning(sprintf("Failed for ISSN=%s, year=%s: %s", issn, yr, conditionMessage(r$error)))
+    return(NULL)
   }
+  if (is.data.frame(r$result) && nrow(r$result) > 0) r$result else NULL
+})
 
-  Sys.sleep(0.8) # small pause between 50-row batches
-}
-
-matched_articles <- bind_rows(results) %>%
-  distinct(id, .keep_all = TRUE) %>%
-  rename(title = display_name)
+matched_articles <- dplyr::bind_rows(keep_df) %>%
+  dplyr::distinct(id, .keep_all = TRUE) %>%
+  dplyr::rename(title = display_name)
 
 length(unique(matched_articles$issn_l))
 length(unique(get_matches$issn))

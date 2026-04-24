@@ -1,5 +1,4 @@
 # Shared OpenCitations helper functions for citing-study retrieval
-# Used by _04b_citing_studies_OC.Rmd and _04.5b_citing_studies_rep_OC.Rmd
 
 oc_needed_cols <- c("citing", "cited", "source", "creation", "timespan", "journal_sc", "doi_queried")
 

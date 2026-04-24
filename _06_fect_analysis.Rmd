@@ -104,7 +104,7 @@ analysis_padded %>%
 
 
 
-analysis_padded%>%filter(year<2000)
+analysis_padded %>% head()
 
 
 ```
@@ -142,6 +142,8 @@ analysis_padded %>% filter(is.na(sjr))
 ```{r}
 str(analysis_padded)
 
+# Identify number of factors
+
 fit_factor <- fect(
   n_citations ~ D + age2 + sjr, 
   data = analysis_padded,
@@ -175,10 +177,10 @@ fit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 1,
+  r = fit_factor$r.cv,
   nboots=500,
   keep.sims = TRUE,
-  min.T0 = 2
+  min.T0 = fit_factor$r.cv + 1 
 )
 
 
@@ -193,9 +195,10 @@ plot(fit,
 
 saveRDS(fit, paste0("models/fit_citation_", data_source, ".rds"))
 ```
-#control tests
+
+# control tests
 ```{r}
-#placebo - checks for pre-treatment effects
+# placebo - checks for pre-treatment effects
 placebo_win <- c(-4, -1)
 
 fit_placebo <- fect(
@@ -204,13 +207,13 @@ fit_placebo <- fect(
   index  = c("doi_queried","year"),
   method = "ife",
   force  = "two-way",
-  r      = 1,
+  r      = fit_factor$r.cv,
   se     = TRUE,
   CV     = FALSE, 
   nboots=200,
   placeboTest   = TRUE,
   placebo.period = placebo_win,
-    min.T0 = 2 
+    min.T0 = fit_factor$r.cv + 1 
 )
 
 fit_placebo$test.out
@@ -280,10 +283,10 @@ fit_nococit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 1,
+  r = fit_factor_nococit$r.cv,
   nboots=500,
   keep.sims = TRUE,
-  min.T0 = 2
+  min.T0 = fit_factor_nococit$r.cv + 1
 )
 
 
@@ -309,13 +312,13 @@ fit_placebo <- fect(
   index  = c("doi_queried","year"),
   method = "ife",
   force  = "two-way",
-  r      = 1,
+  r      = fit_factor_nococit$r.cv,
   se     = TRUE,
   CV     = FALSE, 
   nboots=200,
   placeboTest   = TRUE,
   placebo.period = placebo_win,
-    min.T0 = 2 
+    min.T0 = fit_factor_nococit$r.cv + 1 
 )
 
 fit_placebo$test.out

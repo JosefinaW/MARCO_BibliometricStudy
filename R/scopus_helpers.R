@@ -1,5 +1,4 @@
 # Shared Scopus helper functions for citing-study retrieval
-# Used by _04a_citing_studies_Scopus.Rmd and _04.5a_citing_studies_rep_Scopus.Rmd
 
 scopus_search_cursor <- function(query, api_key, count = 200, view = "STANDARD",
                                  wait_time = 0.2, max_records = Inf) {

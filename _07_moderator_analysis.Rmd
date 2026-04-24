@@ -173,7 +173,8 @@ email <- Sys.getenv("MY_EMAIL")
 if (file.exists("oa_unpaywall.rds")) {
   oa_unpaywall <- readRDS("oa_unpaywall.rds")
 } else {
-  oa_unpaywall <- tibble()
+  oa_unpaywall <- tibble(doi = character(), is_oa = logical(), 
+       oa_status = character(), best_oa_location = character())
 }
 
 # Step 1: Identify DOIs that need querying
@@ -566,10 +567,6 @@ author_h_index_series <- function(au_id, api_key, target_years, wait = 0.25) {
 compute_seniority <- function(doi_r, replication_year, api_key, wait = 0.25) {
   target_years <- replication_year:(replication_year + 10)
   
-  print(doi_r)
-  print(typeof(doi_r))
-  print(class(doi_r))
-
   message("=== DOI_r: ", doi_r, " (rep year ", replication_year, ") ===")
   authors <- get_fl_author_ids(doi_r, api_key, wait = wait)
 
@@ -1436,7 +1433,7 @@ author_overlap <- df_meta |>
     by = "doi_o",
     relationship = "many-to-many"
   ) |>
-  dplyr::mutate(is_overlap = au_id_r == au_id_o & !is.na(au_id_r) & !is.na(au_id_o)) |>
+  dplyr::mutate(is_overlap = coalesce(au_id_r == au_id_o, FALSE) |>
   dplyr::group_by(doi_r, doi_o) |>
   dplyr::summarise(
     n_authors_r  = dplyr::n_distinct(au_id_r, na.rm = TRUE),
@@ -1486,7 +1483,7 @@ mods <- mods %>%
   dplyr::group_by(doi_r) %>%
   dplyr::mutate(
     publication_strategy = dplyr::case_when(
-      any(type_r == "preprint") ~ "preprint",
+      any(type_r == "preprint", na.rm = TRUE) ~ "preprint",
       any(stringr::str_detect(doi_r, paste(preprint_doi, collapse = "|"))) ~ "preprint",
       any(stringr::str_detect(doi_r, "osf")) ~ "preprint",
       dplyr::n_distinct(doi_o) <= 2 ~ "published",
@@ -1548,6 +1545,7 @@ primary <- primary %>%
     contrasts(f) <- contr.sum(nlevels(f))
     f
   }))
+
 # model
 reg_model <- rma.mv(yi = att, V = sampling_var,
               mods = ~ age_r + has_overlap + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority + subject_final,

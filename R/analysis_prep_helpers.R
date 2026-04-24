@@ -17,7 +17,7 @@ prep_analysis_df <- function(df, replic_year, orig_year) {
   df <- df %>%
     dplyr::distinct(doi_queried, year, .keep_all = TRUE) %>%
     dplyr::transmute(
-      doi_queried = as.factor(doi_queried),
+      doi_queried = doi_queried,
       year = as.integer(year),
       n_citations = as.numeric(n_citations),
       D = as.integer(D),
@@ -95,6 +95,8 @@ add_nococit <- function(citations_raw, citations_rep, citing_id_col,
       no_cocit_counts %>% dplyr::select(doi_queried, year, n_nococit),
       by = c("doi_queried", "year")
     ) %>%
+    # if there are no co-citations of the replication study,
+    # n_nococit will be NA, and should be replaced by all citations
     dplyr::mutate(
       n_nococit = dplyr::coalesce(n_nococit, n_citations)
     )

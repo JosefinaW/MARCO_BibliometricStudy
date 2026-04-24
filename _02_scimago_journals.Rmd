@@ -30,7 +30,7 @@ df_journals <- sjr_journals
 ```{r}
 
 df_journals_L <- df_journals %>%
-  separate_rows(issn, sep = "[, ]+") %>%  # split on comma or space
+  separate_rows(issn, sep = "\\s*,\\s*") %>%  # split on comma and space
   mutate(issn = str_trim(issn))
 #write.xlsx(df_journals_L,"df_journals_L.xlsx")
 
@@ -54,13 +54,13 @@ exacts <- journals_orig %>%
   filter(publication_year == year) %>%
   ungroup()
 
-# for works with no exact match, keep the closest year (break ties by earlier year)
+# for works with no exact match, keep the closest year (average if multiple equidistant)
 closest <- journals_orig %>%
   filter(!id %in% exacts$id) %>%   
   group_by(id) %>%
   mutate(diff = abs(publication_year - year)) %>%
-  arrange(diff, year, .by_group = TRUE) %>%   
-  slice_head(n = 1) %>%
+  filter(diff == min(diff)) %>%
+  mutate(sjr = mean(sjr)) %>%
   select(-diff) %>%
   ungroup()
 
