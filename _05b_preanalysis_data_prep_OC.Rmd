@@ -17,6 +17,7 @@ pacman::p_load(
   purrr, dplyr, tibble, data.table
 )
 
+source("R/api_cache.R")
 source("R/analysis_prep_helpers.R")
 ```
 
@@ -49,12 +50,13 @@ options(openalexR.mailto = email)
 batches <- split(null_doi, ceiling(seq_along(null_doi) / 50))
 
 safe_fetch <- purrr::safely(function(d) {
-  oa_fetch(
+  cached_oa_fetch(
     entity = "works",
     doi = d,
     options = list(select = c("doi", "cited_by_count", "counts_by_year")),
     output = "tibble",
     mailto = email,
+    cache_key = list(stage = "openalex_zero_citation_check"),
     verbose = TRUE
   )
 })

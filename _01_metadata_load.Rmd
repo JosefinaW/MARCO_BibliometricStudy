@@ -19,6 +19,8 @@ pacman::p_load(
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
   panelView
 )
+
+source("R/api_cache.R")
 ```
 
 # load dataset
@@ -80,7 +82,7 @@ email <- Sys.getenv("MY_EMAIL")
 ##add email address to run!
 options(openalexR.mailto = email)
 # fetch metadata
-OA_list <- oa_fetch(
+OA_list <- cached_oa_fetch(
   entity = "works",
   doi = dois,
   output = "tibble",
@@ -113,7 +115,7 @@ doi_r <- unique(na.omit(df$doi_r))
 ##add email address to run!
 options(openalexR.mailto = email)
 # fetch metadata
-OA_list_r <- oa_fetch(
+OA_list_r <- cached_oa_fetch(
   entity = "works",
   doi = doi_r,
   output = "tibble",
@@ -151,7 +153,6 @@ df_meta <- df_meta %>%
 saveRDS(df_meta,file="data/metadata_OpenAlex.rds")
 
 ```
-
 
 
 

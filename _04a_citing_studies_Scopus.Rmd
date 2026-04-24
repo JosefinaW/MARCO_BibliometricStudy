@@ -95,7 +95,10 @@ if (cfg$dedup) {
     dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
 }
 
+citing_studies <- citing_studies |>
+  dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
+
 message("Unique DOIs queried: ", length(unique(citing_studies$doi_queried)))
 
-saveRDS(citing_studies, cfg$out_rds)
+save_rds_atomic(citing_studies, cfg$out_rds)
 ```

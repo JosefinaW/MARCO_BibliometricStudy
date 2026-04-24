@@ -1,10 +1,12 @@
 # Shared OpenCitations helper functions for citing-study retrieval
 
+source("R/api_cache.R")
+
 oc_needed_cols <- c("citing", "cited", "source", "creation", "timespan", "journal_sc", "doi_queried")
 
 oc_ensure_output <- function(outfile) {
   if (!file.exists(outfile)) {
-    data.table::fwrite(
+    write_csv_atomic(
       data.frame(
         citing = character(),
         cited = character(),
@@ -15,7 +17,7 @@ oc_ensure_output <- function(outfile) {
         doi_queried = character(),
         stringsAsFactors = FALSE
       ),
-      file = outfile
+      path = outfile
     )
   }
 }
@@ -45,35 +47,41 @@ oc_parse_payload <- function(txt, doi) {
 oc_base_fetch <- function(doi, base_url, access_token) {
   url <- paste0(base_url, utils::URLencode(doi, reserved = TRUE))
 
-  resp <- httr::GET(
-    url,
-    httr::accept_json(),
-    if (nzchar(access_token)) httr::add_headers(authorization = access_token)
-  )
+  api_cache(
+    service = "opencitations_citations_by_doi",
+    key = list(base_url = base_url, doi = doi),
+    code = {
+      resp <- httr::GET(
+        url,
+        httr::accept_json(),
+        if (nzchar(access_token)) httr::add_headers(authorization = access_token)
+      )
 
-  code <- httr::status_code(resp)
+      code <- httr::status_code(resp)
 
-  if (code == 200) {
-    txt <- httr::content(resp, as = "text", encoding = "UTF-8")
-    df <- oc_parse_payload(txt, doi)
-    if (is.null(df)) {
-      stop(sprintf("Parse failed for %s", doi))
+      if (code == 200) {
+        txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+        df <- oc_parse_payload(txt, doi)
+        if (is.null(df)) {
+          stop(sprintf("Parse failed for %s", doi))
+        }
+        return(list(df = df, failed = FALSE, not_found = FALSE))
+      }
+
+      if (code == 404) {
+        message("  Not found in OpenCitations index: ", doi)
+        return(list(df = NULL, failed = FALSE, not_found = TRUE))
+      }
+
+      if (code %in% c(429, 500, 502, 503, 504)) {
+        Sys.sleep(oc_sleep_from_resp(resp, default = 1))
+        stop(sprintf("Retryable HTTP %s for %s", code, doi))
+      }
+
+      warning(sprintf("Non-retryable HTTP %s for %s", code, doi))
+      list(df = NULL, failed = TRUE, not_found = FALSE)
     }
-    return(list(df = df, failed = FALSE, not_found = FALSE))
-  }
-
-  if (code == 404) {
-    message("  Not found in OpenCitations index: ", doi)
-    return(list(df = NULL, failed = FALSE, not_found = TRUE))
-  }
-
-  if (code %in% c(429, 500, 502, 503, 504)) {
-    Sys.sleep(oc_sleep_from_resp(resp, default = 1))
-    stop(sprintf("Retryable HTTP %s for %s", code, doi))
-  }
-
-  warning(sprintf("Non-retryable HTTP %s for %s", code, doi))
-  list(df = NULL, failed = TRUE, not_found = FALSE)
+  )
 }
 
 run_oc_citing_pipeline <- function(dois, access_token,
@@ -127,7 +135,13 @@ run_oc_citing_pipeline <- function(dois, access_token,
 
     if (length(dfs)) {
       out <- data.table::rbindlist(dfs, use.names = TRUE, fill = TRUE)
-      if (nrow(out)) data.table::fwrite(out, file = outfile, append = TRUE)
+      if (nrow(out)) {
+        append_csv_atomic(
+          as.data.frame(out),
+          outfile,
+          dedupe_by = c("citing", "cited", "doi_queried")
+        )
+      }
       rm(out)
     }
 
@@ -136,11 +150,11 @@ run_oc_citing_pipeline <- function(dois, access_token,
     failed_local <- c(failed_nonretry, failed_errors)
 
     if (length(failed_local)) {
-      write(failed_local, file = failed_log, append = TRUE, ncolumns = 1)
+      write_lines_atomic(failed_local, failed_log, unique_only = TRUE)
     }
 
     last_idx <- rng[2]
-    saveRDS(last_idx + 1L, checkpoint_rds)
+    save_rds_atomic(last_idx + 1L, checkpoint_rds)
 
     rm(res, dfs, ok)
     gc()

@@ -19,6 +19,7 @@ pacman::p_load(
   panelView
 )
 
+source("R/api_cache.R")
 source("R/data_prep.R")
 
 ```
@@ -58,7 +59,7 @@ options(openalexR.mailto = email)
 fetch_issn_year <- purrr::slowly(
   purrr::safely(function(issn, year) {
     message(sprintf("ISSN=%s, year=%s", issn, year))
-    oa_fetch(
+    cached_oa_fetch(
       entity = "works",
       `primary_location.source.issn` = issn,
       publication_year = year,
@@ -67,6 +68,7 @@ fetch_issn_year <- purrr::slowly(
       options = list(
         select = c("id", "doi", "display_name", "publication_year", "primary_location")
       ),
+      cache_key = list(stage = "matched_journal_articles"),
       verbose = TRUE
     )
   }),
@@ -128,7 +130,7 @@ get <- rows_not_in_first %>%
 get <- get %>% filter(issn != "-")
 
 # get metadata for missing articles
-out_miss <- oa_fetch(
+out_miss <- cached_oa_fetch(
   entity = "works",
   `primary_location.source.issn` = get$issn,
   publication_year = get$publication_year,
@@ -136,6 +138,7 @@ out_miss <- oa_fetch(
   options = list(
     select = c("id", "doi", "display_name", "publication_year", "primary_location")
   ),
+  cache_key = list(stage = "missing_journal_articles"),
   verbose = TRUE
 )
 out_miss <- out_miss %>% rename(title = display_name)
@@ -152,7 +155,7 @@ get2 <- df_meta %>%
   select(publication_year, issn_l)
 get2 <-unique(get2)
 
-out_miss2 <- oa_fetch(
+out_miss2 <- cached_oa_fetch(
   entity = "works",
   `primary_location.source.issn` = get2$issn_l, # Nature's ISSN-L (example)
   publication_year = get2$publication_year,
@@ -160,6 +163,7 @@ out_miss2 <- oa_fetch(
   options = list(
     select = c("id", "doi", "display_name", "publication_year", "primary_location")
   ),
+  cache_key = list(stage = "missing_original_articles"),
   verbose = TRUE
 )
 
@@ -175,5 +179,4 @@ setdiff(df_meta$doi_o, all_matched_articles$doi)
 saveRDS(all_matched_articles, "data/all_matched_articles_pilot.rds")
 
 ```
-
 

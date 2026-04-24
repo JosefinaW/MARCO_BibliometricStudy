@@ -19,6 +19,7 @@ pacman::p_load(
   stringr, rscopus
 )
 
+source("R/api_cache.R")
 source("R/analysis_prep_helpers.R")
 ```
 
@@ -55,13 +56,16 @@ length(null_doi)
 ```{r}
 key <- Sys.getenv("SCOPUS_API_KEY")
 
-results <- purrr::map(null_doi, ~ rscopus::citation_retrieval(doi = .x, api_key = key, date_range = c("1900", "2025")))
-ok <- purrr::map_lgl(results, ~ httr::status_code(.x$get_statement) < 400)
+results <- purrr::map(
+  null_doi,
+  ~ cached_citation_retrieval(doi = .x, api_key = key, date_range = c("1900", "2025"))
+)
+ok <- purrr::map_lgl(results, ~ .x$status_code < 400)
 
 table(ok)
 
 parsed <- results[ok] |>
-  purrr::map(rscopus::parse_citation_retrieval)
+  purrr::map("parsed")
 dois_ok <- null_doi[ok]
 
 str(parsed[[1]]$citation_info)
