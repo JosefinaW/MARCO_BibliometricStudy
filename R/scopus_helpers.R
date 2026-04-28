@@ -153,7 +153,7 @@ process_one_doi <- function(doi, api_key, raw_dir, raw_suffix = "_doc.rds",
     citing_title   = pick_col(citers_df, c("dc:title", "dc.title", "title")),
     citing_journal = pick_col(citers_df, c("prism.publicationName", "prism:publicationName", "journal")),
     citing_date    = pick_col(citers_df, c("prism.coverDate", "prism:coverDate", "cover_date"))
-  ) |>
+  ) %>%
     dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
 }
 

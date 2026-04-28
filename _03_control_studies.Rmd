@@ -21,14 +21,12 @@ pacman::p_load(
 
 source("R/api_cache.R")
 source("R/data_prep.R")
-
 ```
 
 #data loading
 ```{r}
 matched_journals <- readRDS("data/matched_journals_pilot.rds")
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
-
 ```
 
 # getting control studies
@@ -83,7 +81,8 @@ results <- purrr::map2(
 
 # keep only successful, non-empty data frames; warn on the rest
 keep_df <- purrr::imap(results, function(r, i) {
-  issn <- get_matches$issn[i]; yr <- get_matches$year[i]
+  issn <- get_matches$issn[i]
+  yr <- get_matches$year[i]
   if (!is.null(r$error)) {
     warning(sprintf("Failed for ISSN=%s, year=%s: %s", issn, yr, conditionMessage(r$error)))
     return(NULL)
@@ -149,17 +148,17 @@ all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remov
 # MISSING SOME OF THE JOURNAL MATCHED DOIS
 ## need to move this earlier for smoother workflow
 miss_doi <- setdiff(df_meta$doi_o, all_matched_articles$doi)
-df_meta%>%filter(doi_o=="10.1007/s10802-020-00712-w")
+df_meta %>% filter(doi_o == "10.1007/s10802-020-00712-w")
 get2 <- df_meta %>%
   filter(doi_o %in% miss_doi) %>%
   select(publication_year, issn_l)
-get2 <-unique(get2)
+get2 <- unique(get2)
 
 out_miss2 <- cached_oa_fetch(
   entity = "works",
   `primary_location.source.issn` = get2$issn_l, # Nature's ISSN-L (example)
   publication_year = get2$publication_year,
-  type="article",
+  type = "article",
   options = list(
     select = c("id", "doi", "display_name", "publication_year", "primary_location")
   ),
@@ -177,6 +176,4 @@ setdiff(df_meta$doi_o, all_matched_articles$doi)
 #save ouput
 ```{r}
 saveRDS(all_matched_articles, "data/all_matched_articles_pilot.rds")
-
 ```
-

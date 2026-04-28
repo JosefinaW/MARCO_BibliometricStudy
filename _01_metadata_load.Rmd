@@ -32,9 +32,8 @@ head(df)
 df$doi_o <- gsub(" ", "", df$doi_o)
 df$doi_r <- gsub(" ", "", df$doi_r)
 ```
-# what to do if multiple replications per study
-- in the dataset for analysis this will be slightly different as rows are study - replication pairs, while here rows are effects
-- in analysis will select those original replications pairs so that its the earliest replication if multiple replications and if multiple replications all were failed (as per author descriptions)
+# what to do if multiple replications per study - replication study selection
+
 ```{r}
 df <- df %>%
   group_by(ref_o) %>%
@@ -46,26 +45,23 @@ df <- df %>%
   fill(doi_r, .direction = "downup") %>%
   ungroup()
 
-#check doi_r is not missing where it should not, fill in doi manually if missing
+# check doi_r is not missing where it should not, fill in doi manually if missing
 df %>% filter(is.na(doi_r))
 
-#only originals with all failed replications
+# Create r_key from doi_r or url_r if doi_r is missing
 df <- df %>%
   mutate(r_key = if_else(is.na(doi_r), url_r, doi_r))
 
-# identify doi_o where every replication attempt failed
+# Identify doi_o where every paired replication has outcome == "failed"
 all_failed_dois <- df %>%
-  group_by(doi_o, r_key) %>%
-  summarise(attempt_failed = all(pval_value_r > 0.05, na.rm = TRUE), .groups = "drop") %>%
   group_by(doi_o) %>%
-  summarise(all_attempts_failed = all(attempt_failed), .groups = "drop") %>%
+  summarise(all_attempts_failed = all(outcome == "failed", na.rm = TRUE), .groups = "drop") %>%
   filter(all_attempts_failed) %>%
   pull(doi_o)
 
 df <- df %>%
   filter(doi_o %in% all_failed_dois) %>%
   select(-r_key)
-
 ```
 # only failed replications
 ```{r}
@@ -79,7 +75,7 @@ df <- df %>% mutate(doi_r = tolower(as.character(doi_r)))
 # get dois for originals studies (here from Open Alex)
 dois <- unique(na.omit(df$doi_o))
 email <- Sys.getenv("MY_EMAIL")
-##add email address to run!
+## add email address to run!
 options(openalexR.mailto = email)
 # fetch metadata
 OA_list <- cached_oa_fetch(
@@ -87,32 +83,31 @@ OA_list <- cached_oa_fetch(
   doi = dois,
   output = "tibble",
   verbose = TRUE
-) 
+)
 
 # options = list(
 #     select = c("id", "doi", "display_name", "publication_year", "primary_location.host_venue")
 #   )
 
 
-#test <- oa_fetch(
+# test <- oa_fetch(
 #   entity = "works",
 #   doi = "10.1111/j.1468-0068.2010.00795.x",
 #   output="list"
-# ) 
+# )
 meta_origOA <- OA_list
-#meta_origOA <- fromJSON(toJSON(OA_list, auto_unbox = TRUE), flatten = TRUE) |> 
- # as_tibble()
-##remove web address part of doi
+# meta_origOA <- fromJSON(toJSON(OA_list, auto_unbox = TRUE), flatten = TRUE) |>
+# as_tibble()
+## remove web address part of doi
 meta_origOA <- meta_origOA %>%
   mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 df_meta <- dplyr::left_join(df, meta_origOA, by = c("doi_o" = "doi"))
-
 ```
 
 # replication years
 ```{r}
 doi_r <- unique(na.omit(df$doi_r))
-##add email address to run!
+## add email address to run!
 options(openalexR.mailto = email)
 # fetch metadata
 OA_list_r <- cached_oa_fetch(
@@ -120,10 +115,9 @@ OA_list_r <- cached_oa_fetch(
   doi = doi_r,
   output = "tibble",
   verbose = TRUE
-) 
+)
 
-saveRDS(OA_list_r,"data/metadata_r_OpenAlex.rds")
-
+saveRDS(OA_list_r, "data/metadata_r_OpenAlex.rds")
 ```
 #append and select only earliest replication study
 - replication studies without doi will not have a publication year on OpenAlex and these years will be added manually
@@ -136,24 +130,18 @@ year_r <- OA_list_r %>%
 year_r <- year_r %>% mutate(doi_r = stringr::str_remove(doi_r, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 df_meta <- dplyr::left_join(df_meta, year_r, by = "doi_r")
 colnames(df_meta)
-
+# get only first replication available for that doi_o
 df_meta <- df_meta %>%
   group_by(doi_o) %>%
   slice_min(publication_year_r, n = 1, with_ties = TRUE, na_rm = TRUE) %>%
   ungroup()
 
-
-#select only studies which have replications publisjed between 2011 and 2021
-df_meta <- df_meta %>% 
+# select only studies which have replications published between 2011 and 2021
+df_meta <- df_meta %>%
   filter(publication_year_r >= 2011 & publication_year_r <= 2021)
 ```
 
 ```{r}
-#save the metadata
-saveRDS(df_meta,file="data/metadata_OpenAlex.rds")
-
+# save the metadata
+saveRDS(df_meta, file = "data/metadata_OpenAlex.rds")
 ```
-
-
-
-

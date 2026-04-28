@@ -33,9 +33,7 @@ df_meta <- readRDS("data/metadata_OpenAlex.rds")
 # Choose citation type: "original" or "rep"
 citation_type <- "rep"
 
-cfg <- switch(
-  citation_type,
-  
+cfg <- switch(citation_type,
   "original" = list(
     dois       = full_matched_df$doi,
     raw_dir    = "scopus_raw",
@@ -45,7 +43,6 @@ cfg <- switch(
     out_rds    = "data/citing_studies_scopus.rds",
     dedup      = FALSE
   ),
-  
   "rep" = list(
     dois       = df_meta$doi_r,
     raw_dir    = "scopus_raw_rep",
@@ -55,13 +52,12 @@ cfg <- switch(
     out_rds    = "data/citing_studies_scopus_rep.rds",
     dedup      = TRUE
   ),
-  
   stop("Invalid citation_type. Choose 'original' or 'rep'.")
 )
 
 # Clean DOIs
-dois <- cfg$dois |>
-  trimws() |>
+dois <- cfg$dois %>%
+  trimws() %>%
   (\(x) unique(x[!is.na(x) & x != ""]))()
 
 message("Citation type: ", citation_type)
@@ -91,11 +87,11 @@ citing_studies <- read.csv(cfg$out_csv)
 citing_studies$year <- substr(citing_studies$citing_date, 1, 4)
 
 if (cfg$dedup) {
-  citing_studies <- citing_studies |>
+  citing_studies <- citing_studies %>%
     dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
 }
 
-citing_studies <- citing_studies |>
+citing_studies <- citing_studies %>%
   dplyr::distinct(doi_queried, citing_eid, .keep_all = TRUE)
 
 message("Unique DOIs queried: ", length(unique(citing_studies$doi_queried)))

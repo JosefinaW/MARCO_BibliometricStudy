@@ -27,7 +27,6 @@ some articles unmatched for some reason - wrong issn? find...
 # data loading
 
 ```{r}
-
 all_matched_articles <- readRDS("data/all_matched_articles_pilot.rds")
 matched_journals <- readRDS("data/matched_journals_pilot.rds")
 df_journals <- sjr_journals
@@ -48,12 +47,15 @@ matched_journals <- matched_journals %>%
 not_in_journals <- all_matched_articles %>%
   anti_join(
     matched_journals,
-    by = c("issn_l" = "issn",
-           "publication_year" = "year")
+    by = c(
+      "issn_l" = "issn",
+      "publication_year" = "year"
+    )
   )
 
-combination <- merge(all_matched_articles, matched_journals, by.x = c("issn_l", "publication_year"), by.y = c("issn", "year"),  suffixes = c("", "_j"), all.x = TRUE,
-  sort  = FALSE   
+combination <- merge(all_matched_articles, matched_journals,
+  by.x = c("issn_l", "publication_year"), by.y = c("issn", "year"), suffixes = c("", "_j"), all.x = TRUE,
+  sort = FALSE
 )
 
 combination <- combination %>%
@@ -62,10 +64,7 @@ combination <- combination %>%
 combination %>% filter(is.na(doi_o))
 
 
-
-
 df_journals
-
 ```
 # remove rows with missing dois, dois for supplementary material, dois that are for issues instead of articles, book chapters and dois that are themselves a replication in FLoRA
 ```{r}
@@ -74,7 +73,6 @@ combination <- combination %>%
   filter(!is.na(doi) & !grepl("\\.supp$", doi))
 combination <- combination %>%
   filter(!(doi %in% df_meta$doi_r))
-
 ```
 # subselect
 ```{r}
@@ -83,7 +81,7 @@ set.seed(422)
 # faster than stringr for big columns
 combination <- combination %>%
   mutate(
-    doi_o  = tolower(trimws(doi_o)),
+    doi_o = tolower(trimws(doi_o)),
     doi = tolower(trimws(doi))
   )
 head(combination)
@@ -115,10 +113,10 @@ names(matched_list) <- treated_dois
 
 for (i in seq_along(treated_dois)) {
   tid <- treated_dois[i]
-  df  <- cand_split[[tid]]
+  df <- cand_split[[tid]]
   if (is.null(df) || nrow(df) == 0) next
 
-  u <- unique(df$doi)  # already ordered by arrange()
+  u <- unique(df$doi) # already ordered by arrange()
   keep <- u[!vapply(u, exists, logical(1), envir = used)]
   sel <- head(keep, n_controls)
 
@@ -148,14 +146,14 @@ missing_treated <- setdiff(unique(combination$doi_o), unique(treated_rows_exist$
 treated_rows_missing <- combination %>%
   filter(doi_o %in% missing_treated) %>%
   group_by(doi_o) %>%
-  slice(1) %>%                      # grabs publication_year (and issn_l) from existing rows for that doi_o
+  slice(1) %>% # grabs publication_year (and issn_l) from existing rows for that doi_o
   ungroup() %>%
   transmute(
     issn_l = issn_l,
     publication_year = publication_year,
-    doi = doi_o,                    # <- make treated row
+    doi = doi_o, # <- make treated row
     doi_o = doi_o,
-    sjr_diff = 0,                   # or NA_real_ if you prefer
+    sjr_diff = 0, # or NA_real_ if you prefer
     treated_doi_queried = doi_o
   )
 
@@ -167,19 +165,15 @@ full_matched_df <- bind_rows(treated_rows, matched_analysis_df)
 colnames(full_matched_df)
 full_matched_df <- full_matched_df %>%
   distinct(doi, publication_year, .keep_all = TRUE)
-#check number of studies for each treated doi
+# check number of studies for each treated doi
 full_matched_df %>%
   dplyr::group_by(treated_doi_queried) %>%
   summarise(n_unique = n_distinct(doi), .groups = "drop")
 
 head(full_matched_df)
 length(unique(full_matched_df$doi))
-
-
-
 ```
 
 ```{r}
 saveRDS(full_matched_df, "data/full_matched_df.rds")
-
 ```

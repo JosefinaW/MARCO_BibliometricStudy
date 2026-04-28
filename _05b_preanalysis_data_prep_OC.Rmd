@@ -45,7 +45,7 @@ null_doi <- unique(null_doi)
 
 #do missing dois have 0 citations
 ```{r}
-email = Sys.getenv("MY_EMAIL")
+email <- Sys.getenv("MY_EMAIL")
 options(openalexR.mailto = email)
 batches <- split(null_doi, ceiling(seq_along(null_doi) / 50))
 

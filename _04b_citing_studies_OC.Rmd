@@ -26,7 +26,7 @@ source("R/oc_helpers.R")
 
 ```{r load-data}
 full_matched_df <- readRDS("data/full_matched_df.rds")
-df_meta         <- readRDS("data/metadata_OpenAlex.rds")
+df_meta <- readRDS("data/metadata_OpenAlex.rds")
 ```
 
 # Switch citation type
@@ -35,18 +35,15 @@ df_meta         <- readRDS("data/metadata_OpenAlex.rds")
 # Choose citation type: "original" or "rep"
 citation_type <- "rep"
 
-cfg <- switch(
-  citation_type,
-
+cfg <- switch(citation_type,
   "original" = list(
     dois           = unique(full_matched_df$doi),
     outfile        = "citations_ControlGroup.csv",
     checkpoint_rds = "checkpoint_control.rds",
     failed_log     = "failed_dois_control.txt",
-    extra_csv      = "citations_ControlGroup_2.csv",   # set to NULL if no extra file
+    extra_csv      = "citations_ControlGroup_2.csv", # set to NULL if no extra file
     out_rds        = "data/citations_OC.rds"
   ),
-
   "rep" = list(
     dois           = unique(df_meta$doi_r),
     outfile        = "citations_RepGroup.csv",
@@ -55,13 +52,12 @@ cfg <- switch(
     extra_csv      = NULL,
     out_rds        = "data/citations_OC_rep.rds"
   ),
-
   stop("Invalid citation_type. Choose 'original' or 'rep'.")
 )
 
 # Clean DOIs
-dois <- cfg$dois |>
-  trimws() |>
+dois <- cfg$dois %>%
+  trimws() %>%
   (\(x) unique(x[!is.na(x) & nzchar(x)]))()
 
 message("Citation type: ", citation_type)
@@ -96,8 +92,8 @@ if (!is.null(cfg$extra_csv) && file.exists(cfg$extra_csv)) {
 
 citations$year <- substr(citations$creation, 1, 4)
 
-citations <- citations |>
-  filter(year <= 2025) |>
+citations <- citations %>%
+  filter(year <= 2025) %>%
   distinct(cited, citing, .keep_all = TRUE)
 
 message("Final rows: ", nrow(citations))
