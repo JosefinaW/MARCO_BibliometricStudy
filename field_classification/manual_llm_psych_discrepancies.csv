@@ -1,41 +1,53 @@
 doi,title,source_display_name,field_manual,field_llm,field_confidence
-10.1037/0278-7393.34.1.219,Modeling distributions of immediate memory effects: No strategies needed?,Journal of Experimental Psychology Learning Memory and Cognition,methods_evaluation_psychology,cognitive_psychology,0.97
-10.1073/pnas.1701916114,Belief in free will affects causal attributions when judging others’ behavior,Proceedings of the National Academy of Sciences,cognitive_psychology,social_psychology,0.96
-10.1037/0022-3514.94.1.1,Left frontal cortical activation and spreading of alternatives: Tests of the action-based model of dissonance.,Journal of Personality and Social Psychology,biological_neuropsychology,social_psychology,0.96
-10.1111/j.1467-9280.2008.02043.x,Age-Related Changes in the Episodic Simulation of Future Events,Psychological Science,developmental_psychology,cognitive_psychology,0.96
+10.1016/j.jml.2006.02.004,"Roosters, robins, and alarm clocks: Aptness and conventionality in metaphor comprehension",Journal of Memory and Language,psychology_general,cognitive_psychology,0.98
+10.1037/0022-3514.94.4.615,Social identity contingencies: How diversity cues signal threat or safety for African Americans in mainstream institutions.,Journal of Personality and Social Psychology,occupational_organisational_business_psychology,social_psychology,0.97
+10.1126/science.1238041,Poverty Impedes Cognitive Function,Science,social_psychology,cognitive_psychology,0.96
+10.1037//0022-3514.83.1.44,"Math = male, me = female, therefore math ≠ me.",Journal of Personality and Social Psychology,differential_personality_diagnostics,social_psychology,0.96
+10.1016/j.cognition.2016.06.011,The seductive allure is a reductive allure: People prefer scientific explanations that contain logically irrelevant reductive information,Cognition,psychology_general,cognitive_psychology,0.96
+10.1002/bdm.586,Incidental environmental anchors,Journal of Behavioral Decision Making,psychology_general,cognitive_psychology,0.96
+10.1037/0022-3514.94.3.545,"""Individual differences in the regulation of intergroup bias: The role of conflict monitoring and neural signals for control"": Correction to Amodio et al. (2008).",Journal of Personality and Social Psychology,differential_personality_diagnostics,social_psychology,0.95
 10.1037/0022-3514.94.2.94.2.231,Selective exposure and information quantity: How different information quantities moderate decision makers' preference for consistent and inconsistent information.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.95
-10.1111/j.1467-9280.2008.02077.x,"Toward a Physiology of Dual-Process Reasoning and Judgment: Lemonade, Willpower, and Expensive Rule-Based Analysis",Psychological Science,biological_neuropsychology,cognitive_psychology,0.95
-10.1073/pnas.1706913114,Temporary sharing prompts unrestrained disclosures that leave lasting negative impressions,Proceedings of the National Academy of Sciences,cognitive_psychology,social_psychology,0.95
-10.1177/0956797611435919,Warm Thoughts,Psychological Science,cognitive_psychology,social_psychology,0.95
-10.1073/pnas.2218961120,Thinking about God increases acceptance of artificial intelligence in decision-making,Proceedings of the National Academy of Sciences,cognitive_psychology,social_psychology,0.95
-10.1016/j.neuroimage.2006.11.048,Modulation of emotion by cognition and cognition by emotion,NeuroImage,cognitive_psychology,biological_neuropsychology,0.95
-10.1037/a0032108,Is it better to select or to receive? Learning via active and passive hypothesis testing.,Journal of Experimental Psychology General,educational_psychology,cognitive_psychology,0.95
-10.1177/0146167214524992,My Mother and Me,Personality and Social Psychology Bulletin,developmental_psychology,social_psychology,0.95
-10.1037/0021-9010.77.4.419,Deescalation strategies: A comparison of techniques for reducing commitment to losing courses of action.,Journal of Applied Psychology,social_psychology,occupational_organisational_business_psychology,0.95
-10.1016/j.jesp.2020.104080,From deficit to benefit: Highlighting lower-SES students' background-specific strengths reinforces their academic persistence,Journal of Experimental Social Psychology,educational_psychology,social_psychology,0.95
-10.1371/journal.pone.0154854,Reasoning in Reference Games: Individual- vs. Population-Level Probabilistic Modeling,PLoS ONE,methods_evaluation_psychology,cognitive_psychology,0.92
-10.1111/j.1467-9280.2008.02227.x,With a Clean Conscience,Psychological Science,cognitive_psychology,social_psychology,0.9
-10.1038/nclimate2093,How warm days increase belief in global warming,Nature Climate Change,social_psychology,cognitive_psychology,0.9
-10.1177/01461672952111004,Measures of Anchoring in Estimation Tasks,Personality and Social Psychology Bulletin,methods_evaluation_psychology,social_psychology,0.9
-10.1111/j.1467-9280.2008.02136.x,Measuring the Crowd Within,Psychological Science,methods_evaluation_psychology,cognitive_psychology,0.9
-10.1037/a0012833,Increasing and decreasing motor and cognitive output: A model of general action and inaction goals.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.9
-10.1016/j.jesp.2005.05.001,Subliminal anchoring: The effects of subliminally presented numbers on probability estimates,Journal of Experimental Social Psychology,cognitive_psychology,social_psychology,0.88
-10.1037/0278-7393.34.3.460,Stereotypes and retrieval-provoked illusory source recollections.,Journal of Experimental Psychology Learning Memory and Cognition,social_psychology,cognitive_psychology,0.86
-10.1111/j.1467-9280.2008.02069.x,Preschoolers' Perspective Taking in Word Learning,Psychological Science,educational_psychology,developmental_psychology,0.85
-10.1073/pnas.1607330114,Mere experience of low subjective socioeconomic status stimulates appetite and food intake,Proceedings of the National Academy of Sciences,cognitive_psychology,social_psychology,0.85
-10.1037/0022-3514.94.3.382,Self-regulation and selective exposure: The impact of depleted self-regulation resources on confirmatory information processing.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.85
-10.1007/s40732-020-00453-8,Further Analysis of the Response Deprivation Hypothesis: Application of the Disequilibrium Model to Novel Clinical Contexts,The Psychological Record,cognitive_psychology,clinical_psychology,0.85
-10.4148/1944-9771.1299,"The Sooner, the Better? Couples' First Financial Discussion, Relationship Quality, and Financial Conflict in Emerging Adulthood",Journal of Financial Therapy,clinical_psychology,social_psychology,0.85
-10.3389/fpsyg.2014.01276,Does cleanliness influence moral judgments? Response effort moderates the effect of cleanliness priming on moral judgments,Frontiers in Psychology,cognitive_psychology,social_psychology,0.85
-10.1037/0022-3514.94.4.560,Affective incoherence: When affective concepts and embodied reactions clash.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.85
-10.1016/j.neuropsychologia.2009.05.011,Neural mechanisms of attentional shifts due to irrelevant spatial and numerical cues,Neuropsychologia,cognitive_psychology,biological_neuropsychology,0.85
-10.1093/geronb/gbx099,Are Older Adults More Willing to Donate? The Roles of Donation Form and Social Relationship,The Journals of Gerontology Series B,developmental_psychology,social_psychology,0.85
-10.1111/j.1467-9280.2008.02092.x,Perceptual Mechanisms That Characterize Gender Differences in Decoding Women's Sexual Intent,Psychological Science,social_psychology,cognitive_psychology,0.78
-10.1037/xge0001195,The origins of the shape bias: Evidence from the Tsimane’.,Journal of Experimental Psychology General,cognitive_psychology,developmental_psychology,0.78
-10.1177/0956797619879441,Development of Holistic Episodic Recollection,Psychological Science,cognitive_psychology,developmental_psychology,0.78
-10.1037/0022-3514.95.2.274,"Self-handicapping, excuse making, and counterfactual thinking: Consequences for self-esteem and future motivation.",Journal of Personality and Social Psychology,social_psychology,differential_personality_diagnostics,0.75
+10.1111/j.1467-9280.2008.02066.x,More Than Meets the Eye,Psychological Science,developmental_psychology,cognitive_psychology,0.95
+10.1037/0022-3514.94.3.396,The effects of an implemental mind-set on attitude strength.,Journal of Personality and Social Psychology,differential_personality_diagnostics,social_psychology,0.95
+10.1016/j.cognition.2013.02.008,Lay denial of knowledge for justified true beliefs,Cognition,social_psychology,cognitive_psychology,0.95
+10.1037/0022-3514.94.1.1,Left frontal cortical activation and spreading of alternatives: Tests of the action-based model of dissonance.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.95
+10.1037/0022-3514.94.2.245,Sex differences in mate preferences revisited: Do people know what they initially desire in a romantic partner?,Journal of Personality and Social Psychology,differential_personality_diagnostics,social_psychology,0.95
+10.1073/pnas.1805284115,How gender determines the way we speak about professionals,Proceedings of the National Academy of Sciences,occupational_organisational_business_psychology,social_psychology,0.95
+10.1111/j.1467-9280.2008.02049.x,Extremal Edge,Psychological Science,psychology_general,cognitive_psychology,0.95
+10.1016/j.cognition.2015.01.013,Causal superseding,Cognition,social_psychology,cognitive_psychology,0.95
+10.1016/j.neuropsychologia.2009.05.011,Neural mechanisms of attentional shifts due to irrelevant spatial and numerical cues,Neuropsychologia,cognitive_psychology,biological_neuropsychology,0.95
+10.1177/0956797614558718,Anchors Weigh More Than Power,Psychological Science,psychology_general,cognitive_psychology,0.95
+10.1111/1467-9280.00334,"Money, Kisses, and Electric Shocks: On the Affective Psychology of Risk",Psychological Science,social_psychology,cognitive_psychology,0.95
+10.1038/nclimate2093,How warm days increase belief in global warming,Nature Climate Change,social_psychology,cognitive_psychology,0.92
+10.1111/j.1467-9280.2008.02061.x,Affective Flexibility,Psychological Science,cognitive_psychology,biological_neuropsychology,0.92
+10.1016/j.neuroimage.2006.11.048,Modulation of emotion by cognition and cognition by emotion,NeuroImage,cognitive_psychology,biological_neuropsychology,0.92
+10.1037/a0019689,"Red, rank, and romance in women viewing men.",Journal of Experimental Psychology General,differential_personality_diagnostics,social_psychology,0.92
+10.1002/jeab.432,Impulsive choice and pre‐exposure to delays: iv. effects of delay‐ and immediacy‐exposure training relative to maturational changes in impulsivity,Journal of the Experimental Analysis of Behavior,biological_neuropsychology,cognitive_psychology,0.92
+10.1126/science.1199427,Writing About Testing Worries Boosts Exam Performance in the Classroom,Science,clinical_psychology,educational_psychology,0.92
+10.1073/pnas.2014505117,The logic of universalization guides moral judgment,Proceedings of the National Academy of Sciences,social_psychology,cognitive_psychology,0.9
+10.1016/j.obhdp.2006.10.001,High in the hierarchy: How vertical location and judgments of leaders’ power are interrelated,Organizational Behavior and Human Decision Processes,social_psychology,occupational_organisational_business_psychology,0.9
+10.1037/a0012833,Increasing and decreasing motor and cognitive output: A model of general action and inaction goals.,Journal of Personality and Social Psychology,psychology_general,social_psychology,0.9
+10.1016/j.jesp.2005.05.001,Subliminal anchoring: The effects of subliminally presented numbers on probability estimates,Journal of Experimental Social Psychology,cognitive_psychology,social_psychology,0.9
+10.1037/a0034462,A functional basis for structure-seeking: Exposure to structure promotes willingness to engage in motivated action.,Journal of Experimental Psychology General,social_psychology,cognitive_psychology,0.86
+10.1111/j.1551-6709.2011.01210.x,Reflection and Reasoning in Moral Judgment,Cognitive Science,social_psychology,cognitive_psychology,0.86
+10.1111/j.1467-9280.2008.02092.x,Perceptual Mechanisms That Characterize Gender Differences in Decoding Women's Sexual Intent,Psychological Science,differential_personality_diagnostics,cognitive_psychology,0.86
+10.1007/s40732-020-00453-8,Further Analysis of the Response Deprivation Hypothesis: Application of the Disequilibrium Model to Novel Clinical Contexts,The Psychological Record,social_psychology,clinical_psychology,0.86
+10.1111/j.1467-9280.2007.02004.x,Running on Empty,Psychological Science,cognitive_psychology,biological_neuropsychology,0.86
+10.1126/science.1250830,Just think: The challenges of the disengaged mind,Science,psychology_general,cognitive_psychology,0.86
+10.1073/pnas.2009030117,Objecting to experiments even while approving of the policies or treatments they compare,Proceedings of the National Academy of Sciences,methods_evaluation_psychology,social_psychology,0.86
+10.1111/j.1467-9280.2008.02136.x,Measuring the Crowd Within,Psychological Science,social_psychology,cognitive_psychology,0.86
+10.1073/pnas.1601280113,Uncalculating cooperation is used to signal trustworthiness,Proceedings of the National Academy of Sciences,psychology_general,social_psychology,0.86
+10.1086/269239,Assimilation and Contrast Effects in Part-Whole Question Sequences: A Conversational Logic Analysis,Public Opinion Quarterly,social_psychology,cognitive_psychology,0.86
+10.1177/0956797615572231,"When Does the Future Begin? Time Metrics Matter, Connecting Present and Future Selves",Psychological Science,psychology_general,cognitive_psychology,0.85
+10.1037/xge0001195,The origins of the shape bias: Evidence from the Tsimane’.,Journal of Experimental Psychology General,cognitive_psychology,developmental_psychology,0.85
+10.1037/0022-3514.74.3.774,Self-control as a limited resource: Regulatory depletion patterns.,Journal of Personality and Social Psychology,cognitive_psychology,social_psychology,0.85
+10.1111/j.1468-0017.2006.00297.x,A Dissociation Between Moral Judgments and Justifications,Mind & Language,social_psychology,cognitive_psychology,0.85
+10.1126/science.1190792,The Social Sense: Susceptibility to Others’ Beliefs in Human Infants and Adults,Science,developmental_psychology,social_psychology,0.85
+10.1111/j.1467-9280.2008.02053.x,Errors Are Aversive,Psychological Science,cognitive_psychology,biological_neuropsychology,0.85
+10.1177/0956797613494853,Aging 5 Years in 5 Minutes,Psychological Science,psychology_general,developmental_psychology,0.78
+10.1177/0956797614563108,Anticipating Divine Protection? Reminders of God Can Increase Nonmoral Risk Taking,Psychological Science,social_psychology,cognitive_psychology,0.78
 10.1163/156853706776931222,The Folk Concepts of Intention and Intentional Action: A Cross-Cultural Study,Journal of Cognition and Culture,social_psychology,cognitive_psychology,0.75
-10.1111/j.1467-9280.2008.02091.x,The Sunny Side of Fairness,Psychological Science,social_psychology,biological_neuropsychology,0.75
-10.1177/0956797618780643,Implicit Theories of Interest: Finding Your Passion or Developing It?,Psychological Science,cognitive_psychology,social_psychology,0.75
-10.1177/0956797613494853,Aging 5 Years in 5 Minutes,Psychological Science,developmental_psychology,social_psychology,0.7
-10.1037/a0021524,Feeling the future: Experimental evidence for anomalous retroactive influences on cognition and affect.,Journal of Personality and Social Psychology,social_psychology,psychology_general,0.62
+10.1177/0956797611435919,Warm Thoughts,Psychological Science,social_psychology,differential_personality_diagnostics,0.75
+10.1177/0956797619879441,Development of Holistic Episodic Recollection,Psychological Science,cognitive_psychology,developmental_psychology,0.75
+10.1037/a0019006,"Music-evoked nostalgia: Affect, memory, and personality.",Emotion,social_psychology,differential_personality_diagnostics,0.7
+10.1037/pspi0000109,Awe and humility.,Journal of Personality and Social Psychology,social_psychology,differential_personality_diagnostics,0.7

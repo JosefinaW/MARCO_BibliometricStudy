@@ -324,9 +324,13 @@ AVAILABLE FIELDS (JSON array):
 
 You will receive articles as JSON with: article_title, article_abstract, journal_title
 
+For multidisciplinary articles that genuinely span two subfields (e.g. a judgment/decision-making paper with a strong social-identity component), assign one primary field that best fits the core contribution and also assign a secondary field. Otherwise leave the secondary fields null.
+
 Respond with a JSON object containing:
-- "field_id": the id of the matching field (string)
+- "field_id": the id of the primary matching field (string)
 - "confidence": your confidence from 0 to 1 (number)
+- "secondary_field_id": the id of a secondary field if the article genuinely spans two subfields (string or null)
+- "secondary_confidence": confidence for the secondary field, if applicable (number or null)
 '
 ```
 
@@ -465,7 +469,9 @@ type_cluster_result <- type_object(
 type_field_result <- type_object(
   "Subfield classification result for a scientific article",
   field_id = type_string("Field id from the schema."),
-  confidence = type_number("Confidence from 0 (very uncertain) to 1 (very confident).")
+  confidence = type_number("Confidence from 0 (very uncertain) to 1 (very confident)."),
+  secondary_field_id = type_string("Secondary field id for articles spanning two subfields, or null."),
+  secondary_confidence = type_number("Confidence for the secondary field, or null.")
 )
 ```
 
@@ -515,7 +521,10 @@ extract_field_results <- function(chats) {
     content <- assistant_turn@text
     parsed <- tryCatch(
       fromJSON(content),
-      error = function(e) list(field_id = NA_character_, confidence = NA_real_)
+      error = function(e) list(
+        field_id = NA_character_, confidence = NA_real_,
+        secondary_field_id = NA_character_, secondary_confidence = NA_real_
+      )
     )
 
     # Extract reasoning_content from raw response
@@ -527,6 +536,8 @@ extract_field_results <- function(chats) {
     tibble(
       field_id = parsed$field_id %||% NA_character_,
       field_confidence = parsed$confidence %||% NA_real_,
+      secondary_field_id = parsed$secondary_field_id %||% NA_character_,
+      secondary_field_confidence = parsed$secondary_confidence %||% NA_real_,
       field_reasoning = reasoning
     )
   })
@@ -603,12 +614,16 @@ classify_cluster_fields <- function(
   provider = "deepinfra",
   field_threshold = 100
 ) {
-  # Count articles per cluster
-  cluster_counts <- cluster_results |>
+  # Count articles per cluster — include both primary and secondary assignments
+  cluster_counts <- bind_rows(
+    cluster_results |> transmute(cluster_id = cluster_id),
+    cluster_results |> transmute(cluster_id = secondary_cluster_id)
+  ) |>
+    filter(!is.na(cluster_id)) |>
     count(cluster_id) |>
     arrange(desc(n))
 
-  cat("\n=== CLUSTERS REQUIRING FIELD CLASSIFICATION ===\n")
+  cat("\n=== CLUSTERS REQUIRING FIELD CLASSIFICATION (primary + secondary) ===\n")
   clusters_above_threshold <- cluster_counts |>
     filter(n >= field_threshold)
 
@@ -619,32 +634,50 @@ classify_cluster_fields <- function(
     return(cluster_results)
   }
 
-  # Process each cluster with available field schema
-  results_with_fields <- tibble()
+  # Initialise field columns, one set per cluster with a schema, so articles
+  # where the cluster appears as secondary can be stored without clobbering
+  # their primary-cluster fields.
+  for (cl_id in names(cluster_breakdowns)) {
+    field_col  <- paste0(cl_id, "_field_id")
+    conf_col   <- paste0(cl_id, "_field_confidence")
+    sec_col    <- paste0(cl_id, "_secondary_field_id")
+    sec_conf   <- paste0(cl_id, "_secondary_field_confidence")
+    reas_col   <- paste0(cl_id, "_field_reasoning")
+    if (is.null(cluster_results[[field_col]])) cluster_results[[field_col]]  <- NA_character_
+    if (is.null(cluster_results[[conf_col]]))  cluster_results[[conf_col]]   <- NA_real_
+    if (is.null(cluster_results[[sec_col]]))   cluster_results[[sec_col]]    <- NA_character_
+    if (is.null(cluster_results[[sec_conf]]))  cluster_results[[sec_conf]]   <- NA_real_
+    if (is.null(cluster_results[[reas_col]]))  cluster_results[[reas_col]]   <- NA_character_
+  }
 
-  for (cluster_id in clusters_above_threshold$cluster_id) {
-    if (!(cluster_id %in% names(cluster_breakdowns))) {
-      cat(sprintf("Note: No field schema available for cluster '%s'\n", cluster_id))
+  for (target_cluster in clusters_above_threshold$cluster_id) {
+    if (is.na(target_cluster) || !(target_cluster %in% names(cluster_breakdowns))) {
+      cat(sprintf("Note: No field schema available for cluster '%s'\n", target_cluster))
       next
     }
 
-    config <- cluster_breakdowns[[cluster_id]]
-    articles_idx <- which(cluster_results$cluster_id == cluster_id)
+    config <- cluster_breakdowns[[target_cluster]]
+
+    # Articles where target_cluster appears as primary OR secondary
+    is_target <- (cluster_results$cluster_id == target_cluster &
+                    !is.na(cluster_results$cluster_id)) |
+      (cluster_results$secondary_cluster_id == target_cluster &
+         !is.na(cluster_results$secondary_cluster_id))
+    articles_idx <- which(is_target)
     n_articles <- length(articles_idx)
 
     cat(sprintf(
-      "\nClassifying %d %s articles into fields (parallel processing)...\n",
-      n_articles, cluster_id
+      "\nClassifying %d %s articles (primary or secondary) into fields...\n",
+      n_articles, target_cluster
     ))
+    if (n_articles == 0) next
 
-    # Create field chat for this cluster
     field_chat <- config$chat_constructor(
       model = model,
       provider = provider,
       api_args = list(temperature = 0)
     )
 
-    # Prepare prompts
     field_prompts <- cluster_results[articles_idx, ] |>
       rowwise() |>
       reframe(
@@ -662,29 +695,53 @@ classify_cluster_fields <- function(
       clean_json_text() |>
       as.list()
 
-    # Classify fields using parallel_chat to access reasoning_content
     field_chat_results <- parallel_chat(
       chat = field_chat,
       prompts = field_prompts
     )
-
-    # Extract structured results and reasoning
     field_results_df <- extract_field_results(field_chat_results)
 
-    current_cluster <- cluster_id
-
-    current_results <- cluster_results %>%
-      filter(cluster_id == current_cluster) %>%
-      bind_cols(field_results_df)
-
-    cluster_results <- cluster_results %>%
-      filter(cluster_id != current_cluster)
-
-    results_with_fields <- bind_rows(results_with_fields, current_results)
-
+    # Write into the per-cluster columns
+    cluster_results[[paste0(target_cluster, "_field_id")]][articles_idx] <-
+      field_results_df$field_id
+    cluster_results[[paste0(target_cluster, "_field_confidence")]][articles_idx] <-
+      field_results_df$field_confidence
+    cluster_results[[paste0(target_cluster, "_secondary_field_id")]][articles_idx] <-
+      field_results_df$secondary_field_id
+    cluster_results[[paste0(target_cluster, "_secondary_field_confidence")]][articles_idx] <-
+      field_results_df$secondary_field_confidence
+    cluster_results[[paste0(target_cluster, "_field_reasoning")]][articles_idx] <-
+      field_results_df$field_reasoning
   }
 
-  bind_rows(results_with_fields, cluster_results)
+  # Also surface the primary cluster's field result as unprefixed `field_id`
+  # for convenience (back-compat with the old column name).
+  cluster_results <- cluster_results |>
+    mutate(
+      field_id = NA_character_,
+      field_confidence = NA_real_,
+      secondary_field_id = NA_character_,
+      secondary_field_confidence = NA_real_,
+      field_reasoning = NA_character_
+    )
+  for (cl_id in names(cluster_breakdowns)) {
+    has_primary <- which(cluster_results$cluster_id == cl_id &
+                           !is.na(cluster_results$cluster_id))
+    if (length(has_primary) > 0) {
+      cluster_results$field_id[has_primary] <-
+        cluster_results[[paste0(cl_id, "_field_id")]][has_primary]
+      cluster_results$field_confidence[has_primary] <-
+        cluster_results[[paste0(cl_id, "_field_confidence")]][has_primary]
+      cluster_results$secondary_field_id[has_primary] <-
+        cluster_results[[paste0(cl_id, "_secondary_field_id")]][has_primary]
+      cluster_results$secondary_field_confidence[has_primary] <-
+        cluster_results[[paste0(cl_id, "_secondary_field_confidence")]][has_primary]
+      cluster_results$field_reasoning[has_primary] <-
+        cluster_results[[paste0(cl_id, "_field_reasoning")]][has_primary]
+    }
+  }
+
+  cluster_results
 }
 ```
 

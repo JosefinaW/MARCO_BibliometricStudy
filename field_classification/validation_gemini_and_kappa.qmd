@@ -1,0 +1,238 @@
+---
+title: "Gemini Classification & Inter-Rater Reliability"
+subtitle: "Second LLM coder (Gemini 3.1 Pro) + Cohen's Kappa"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  eval: true
+---
+
+## Setup
+
+```{r}
+#| label: gemini-setup
+#| message: false
+
+library(ellmer)
+library(jsonlite)
+library(here)
+library(dplyr)
+library(readr)
+library(glue)
+library(irr)
+
+# Allow duplicate chunk labels when purling the pipeline
+options(knitr.duplicate.label = "allow")
+
+# Source pipeline functions for schema and prompts
+pipeline_qmd <- here::here(
+  "field_classification",
+  "article_classification_pipeline - integrated.qmd"
+)
+pipeline_r <- knitr::purl(pipeline_qmd, output = tempfile(fileext = ".R"), quiet = TRUE)
+source(pipeline_r, local = TRUE)
+```
+
+## Load Validation Articles
+
+```{r}
+#| label: load-articles
+
+articles <- read_csv(
+  here::here("field_classification", "validation_articles.csv"),
+  show_col_types = FALSE
+)
+
+cat(sprintf("Articles to classify: %d\n", nrow(articles)))
+```
+
+## Classify with Gemini 3.1 Pro
+
+Use the same cluster prompt as the main pipeline, but with Gemini instead of gpt-oss-120b.
+
+```{r}
+#| label: gemini-classify
+
+create_gemini_cluster_chat <- function() {
+  system_prompt <- glue(cluster_prompt_template,
+                        cluster_schema = cluster_schema_json)
+  chat_google_gemini(
+    system_prompt = system_prompt,
+    model = "gemini-3.1-pro-preview",
+    credentials = function() Sys.getenv("GEMINI_API_KEY"),
+    params = params(temperature = 0),
+    echo = "none"
+  )
+}
+
+n <- nrow(articles)
+gemini_cluster_ids <- character(n)
+gemini_confidences <- numeric(n)
+gemini_secondary_ids <- character(n)
+gemini_secondary_confs <- numeric(n)
+
+cat(sprintf("Classifying %d articles with Gemini 3.1 Pro (sequential)...\n", n))
+
+for (i in seq_len(n)) {
+  if (i %% 10 == 0 || i == n) cat(sprintf("  %d / %d\n", i, n))
+
+  article_json <- toJSON(list(
+    article_title = articles$title[i] %||% "",
+    article_abstract = articles$abstract[i] %||% "",
+    journal_title = articles$source_display_name[i] %||% ""
+  ), auto_unbox = TRUE) |> as.character() |> clean_json_text()
+
+  tryCatch({
+    chat <- create_gemini_cluster_chat()
+    chat$chat(article_json)
+    turns <- chat$get_turns()
+    content <- turns[[2]]@text
+
+    # Gemini may wrap JSON in markdown code fences
+    content <- gsub("^```json\\s*", "", content)
+    content <- gsub("^```\\s*", "", content)
+    content <- gsub("\\s*```$", "", content)
+
+    parsed <- tryCatch(fromJSON(content),
+      error = function(e) list(cluster_id = NA_character_, confidence = NA_real_,
+                               secondary_cluster_id = NA_character_,
+                               secondary_confidence = NA_real_))
+
+    gemini_cluster_ids[i] <- parsed$cluster_id %||% NA_character_
+    gemini_confidences[i] <- parsed$confidence %||% NA_real_
+    gemini_secondary_ids[i] <- parsed$secondary_cluster_id %||% NA_character_
+    gemini_secondary_confs[i] <- parsed$secondary_confidence %||% NA_real_
+  }, error = function(e) {
+    message("  Error on article ", i, ": ", e$message)
+    gemini_cluster_ids[i] <<- NA_character_
+    gemini_confidences[i] <<- NA_real_
+    gemini_secondary_ids[i] <<- NA_character_
+    gemini_secondary_confs[i] <<- NA_real_
+  })
+}
+
+gemini_results <- articles |>
+  select(doi) |>
+  mutate(
+    gemini_cluster_id = gemini_cluster_ids,
+    gemini_confidence = gemini_confidences,
+    gemini_secondary_cluster_id = gemini_secondary_ids,
+    gemini_secondary_confidence = gemini_secondary_confs
+  )
+
+write_csv(gemini_results, here::here("field_classification", "validation_gemini_classified.csv"))
+cat("Saved Gemini classifications to validation_gemini_classified.csv\n")
+```
+
+## Gemini Classification Summary
+
+```{r}
+#| label: gemini-summary
+
+cat("=== Gemini Subject Area Distribution ===\n")
+gemini_results |>
+  count(gemini_cluster_id, sort = TRUE) |>
+  print(n = Inf)
+
+cat(sprintf("\n%d articles with NA cluster_id\n",
+            sum(is.na(gemini_results$gemini_cluster_id))))
+
+cat("\n=== Gemini Confidence Distribution ===\n")
+summary(gemini_results$gemini_confidence)
+```
+
+## Inter-Rater Reliability: gpt-oss-120b vs Gemini 3.1 Pro
+
+```{r}
+#| label: kappa-llms
+
+# Load gpt-oss-120b results
+gpt_results <- read_csv(
+  here::here("field_classification", "validation_classified.csv"),
+  show_col_types = FALSE
+)
+
+# Merge on DOI
+comparison <- inner_join(
+  gpt_results |> select(doi, gpt_cluster_id = cluster_id),
+  gemini_results |> select(doi, gemini_cluster_id),
+  by = "doi"
+) |>
+  filter(!is.na(gpt_cluster_id) & !is.na(gemini_cluster_id))
+
+cat(sprintf("Articles with both classifications: %d\n\n", nrow(comparison)))
+
+# Agreement rate
+agreement <- mean(comparison$gpt_cluster_id == comparison$gemini_cluster_id)
+cat(sprintf("Raw agreement: %.1f%% (%d / %d)\n",
+            agreement * 100, sum(comparison$gpt_cluster_id == comparison$gemini_cluster_id),
+            nrow(comparison)))
+
+# Cohen's Kappa
+kappa_result <- kappa2(comparison[, c("gpt_cluster_id", "gemini_cluster_id")])
+cat(sprintf("\nCohen's Kappa: %.3f\n", kappa_result$value))
+cat(sprintf("z = %.2f, p = %s\n", kappa_result$statistic,
+            format.pval(kappa_result$p.value, digits = 3)))
+
+cat("\n=== Disagreements ===\n")
+disagreements <- comparison |> filter(gpt_cluster_id != gemini_cluster_id)
+cat(sprintf("%d disagreements\n", nrow(disagreements)))
+if (nrow(disagreements) > 0) {
+  disagreements |>
+    left_join(articles |> select(doi, title, source_display_name), by = "doi") |>
+    select(doi, title, source_display_name, gpt_cluster_id, gemini_cluster_id) |>
+    print(n = 30)
+}
+```
+
+## Full Three-Way Agreement (after manual coding)
+
+Load the manual coding results and compute Fleiss' Kappa across all three raters.
+
+```{r}
+#| label: kappa-three-way
+#| eval: false
+
+# Load manual coding (download from the HTML app)
+manual <- read_csv(
+  here::here("field_classification", "manual_classification.csv"),
+  show_col_types = FALSE
+) |>
+  filter(cluster_id != "")
+
+# Merge all three
+three_way <- comparison |>
+  inner_join(manual |> select(doi, manual_cluster_id = cluster_id), by = "doi") |>
+  filter(!is.na(manual_cluster_id) & manual_cluster_id != "")
+
+cat(sprintf("Articles with all three classifications: %d\n\n", nrow(three_way)))
+
+# Pairwise kappas
+cat("=== Pairwise Cohen's Kappa ===\n")
+k_gpt_gemini <- kappa2(three_way[, c("gpt_cluster_id", "gemini_cluster_id")])
+k_gpt_manual <- kappa2(three_way[, c("gpt_cluster_id", "manual_cluster_id")])
+k_gemini_manual <- kappa2(three_way[, c("gemini_cluster_id", "manual_cluster_id")])
+
+cat(sprintf("gpt-oss-120b vs Gemini:  %.3f\n", k_gpt_gemini$value))
+cat(sprintf("gpt-oss-120b vs Manual:  %.3f\n", k_gpt_manual$value))
+cat(sprintf("Gemini vs Manual:        %.3f\n", k_gemini_manual$value))
+
+# Fleiss' Kappa (all three raters)
+# irr::kappam.fleiss expects a matrix: rows = subjects, cols = raters
+ratings_matrix <- three_way |>
+  select(gpt_cluster_id, gemini_cluster_id, manual_cluster_id) |>
+  as.matrix()
+
+fleiss_result <- kappam.fleiss(ratings_matrix)
+cat(sprintf("\nFleiss' Kappa (3 raters): %.3f\n", fleiss_result$value))
+cat(sprintf("z = %.2f, p = %s\n", fleiss_result$statistic,
+            format.pval(fleiss_result$p.value, digits = 3)))
+
+# Three-way agreement
+all_agree <- mean(three_way$gpt_cluster_id == three_way$gemini_cluster_id &
+                  three_way$gpt_cluster_id == three_way$manual_cluster_id)
+cat(sprintf("\nThree-way raw agreement: %.1f%%\n", all_agree * 100))
+```

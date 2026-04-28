@@ -1,0 +1,315 @@
+---
+title: "Classification Validation Run"
+subtitle: "End-to-end test: abstract retrieval + LLM classification"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  eval: true
+---
+
+## Setup
+
+Source all function definitions from the main pipeline (schemas, prompts, helpers,
+classification functions) without running the classification itself.
+
+```{r}
+#| label: val-setup
+#| message: false
+
+# Allow duplicate chunk labels when purling the pipeline
+options(knitr.duplicate.label = "allow")
+
+# Extract and source R code from the main pipeline
+# (all chunks with eval:true run — the run-coding chunk is eval:false so it's skipped)
+pipeline_qmd <- here::here(
+  "field_classification",
+  "article_classification_pipeline - integrated.qmd"
+)
+pipeline_r <- knitr::purl(pipeline_qmd, output = tempfile(fileext = ".R"), quiet = TRUE)
+source(pipeline_r, local = TRUE)
+
+# ellmer::parallel_chat uses httr2::req_perform_parallel which has a cli progress
+# bar that breaks inside knitr. Override classify functions to process sequentially.
+classify_articles_sequential <- function(
+  articles_df,
+  title_col = "title",
+  abstract_col = "abstract",
+  journal_col = "journal",
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra"
+) {
+  articles_list <- articles_df |>
+    rowwise() |>
+    reframe(
+      article = toJSON(
+        list(
+          article_title = .data[[title_col]] %||% "",
+          article_abstract = .data[[abstract_col]] %||% "",
+          journal_title = .data[[journal_col]] %||% ""
+        ),
+        auto_unbox = TRUE
+      )
+    ) |>
+    pull(article) |>
+    as.character() |>
+    clean_json_text()
+
+  n <- length(articles_list)
+  cluster_ids <- character(n)
+  confidences <- numeric(n)
+  secondary_ids <- character(n)
+  secondary_confs <- numeric(n)
+  reasonings <- character(n)
+
+  cat(sprintf("Classifying %d articles into clusters (sequential)...\n", n))
+
+  for (i in seq_len(n)) {
+    if (i %% 10 == 0 || i == n) cat(sprintf("  %d / %d\n", i, n))
+
+    chat <- create_cluster_chat(model = model, provider = provider,
+                                api_args = list(temperature = 0))
+    tryCatch({
+      chat$chat(articles_list[i])
+      turns <- chat$get_turns()
+      assistant_turn <- turns[[2]]
+
+      content <- assistant_turn@text
+      parsed <- tryCatch(fromJSON(content),
+        error = function(e) list(cluster_id = NA_character_, confidence = NA_real_,
+                                 secondary_cluster_id = NA_character_,
+                                 secondary_confidence = NA_real_))
+
+      reasoning <- tryCatch(
+        assistant_turn@json$choices[[1]]$message$reasoning_content %||% NA_character_,
+        error = function(e) NA_character_)
+
+      cluster_ids[i] <- parsed$cluster_id %||% NA_character_
+      confidences[i] <- parsed$confidence %||% NA_real_
+      secondary_ids[i] <- parsed$secondary_cluster_id %||% NA_character_
+      secondary_confs[i] <- parsed$secondary_confidence %||% NA_real_
+      reasonings[i] <- reasoning
+    }, error = function(e) {
+      message("  Error on article ", i, ": ", e$message)
+      cluster_ids[i] <<- NA_character_
+      confidences[i] <<- NA_real_
+      secondary_ids[i] <<- NA_character_
+      secondary_confs[i] <<- NA_real_
+      reasonings[i] <<- NA_character_
+    })
+  }
+
+  articles_df |>
+    bind_cols(tibble(
+      cluster_id = cluster_ids,
+      confidence = confidences,
+      secondary_cluster_id = secondary_ids,
+      secondary_confidence = secondary_confs,
+      reasoning = reasonings
+    ))
+}
+
+classify_fields_sequential <- function(
+  cluster_results,
+  cluster_breakdowns,
+  title_col = "title",
+  abstract_col = "abstract",
+  journal_col = "journal",
+  model = "openai/gpt-oss-120b",
+  provider = "deepinfra",
+  field_threshold = 100
+) {
+  cluster_counts <- cluster_results |> count(cluster_id) |> arrange(desc(n))
+
+  cat("\n=== CLUSTERS REQUIRING FIELD CLASSIFICATION ===\n")
+  clusters_above_threshold <- cluster_counts |> filter(n >= field_threshold)
+
+  if (nrow(clusters_above_threshold) > 0) {
+    print(clusters_above_threshold)
+  } else {
+    cat("No clusters with >= ", field_threshold, " articles\n")
+    return(cluster_results)
+  }
+
+  results_with_fields <- tibble()
+
+  for (cid in clusters_above_threshold$cluster_id) {
+    if (!(cid %in% names(cluster_breakdowns))) {
+      cat(sprintf("Note: No field schema available for cluster '%s'\n", cid))
+      next
+    }
+
+    config <- cluster_breakdowns[[cid]]
+    articles_idx <- which(cluster_results$cluster_id == cid)
+    n_articles <- length(articles_idx)
+    cat(sprintf("\nClassifying %d %s articles into fields (sequential)...\n",
+                n_articles, cid))
+
+    field_ids <- character(n_articles)
+    field_confs <- numeric(n_articles)
+    field_reasonings <- character(n_articles)
+
+    for (j in seq_len(n_articles)) {
+      idx <- articles_idx[j]
+      if (j %% 10 == 0 || j == n_articles) cat(sprintf("  %d / %d\n", j, n_articles))
+
+      article_json <- toJSON(list(
+        article_title = cluster_results[[title_col]][idx] %||% "",
+        article_abstract = cluster_results[[abstract_col]][idx] %||% "",
+        journal_title = cluster_results[[journal_col]][idx] %||% ""
+      ), auto_unbox = TRUE) |> as.character() |> clean_json_text()
+
+      field_chat <- config$chat_constructor(model = model, provider = provider,
+                                            api_args = list(temperature = 0))
+      tryCatch({
+        field_chat$chat(article_json)
+        turns <- field_chat$get_turns()
+        assistant_turn <- turns[[2]]
+
+        parsed <- tryCatch(fromJSON(assistant_turn@text),
+          error = function(e) list(field_id = NA_character_, confidence = NA_real_))
+
+        reasoning <- tryCatch(
+          assistant_turn@json$choices[[1]]$message$reasoning_content %||% NA_character_,
+          error = function(e) NA_character_)
+
+        field_ids[j] <- parsed$field_id %||% NA_character_
+        field_confs[j] <- parsed$confidence %||% NA_real_
+        field_reasonings[j] <- reasoning
+      }, error = function(e) {
+        message("  Error on field article ", j, ": ", e$message)
+        field_ids[j] <<- NA_character_
+        field_confs[j] <<- NA_real_
+        field_reasonings[j] <<- NA_character_
+      })
+    }
+
+    current_cluster <- cid
+    current_results <- cluster_results |>
+      filter(cluster_id == current_cluster) |>
+      bind_cols(tibble(
+        field_id = field_ids,
+        field_confidence = field_confs,
+        field_reasoning = field_reasonings
+      ))
+    cluster_results <- cluster_results |> filter(cluster_id != current_cluster)
+    results_with_fields <- bind_rows(results_with_fields, current_results)
+  }
+
+  bind_rows(results_with_fields, cluster_results)
+}
+```
+
+## Sample DOIs
+
+Draw 250 unique `doi_o` values from the main COS dataset.
+
+```{r}
+#| label: sample-dois
+
+cos_data <- read_csv(here::here("2025-02-07_COSdata_validated_delivered.csv"),
+                     show_col_types = FALSE)
+
+set.seed(42)
+dois_all <- unique(na.omit(cos_data$doi_o))
+n_sample <- min(250, length(dois_all))
+dois_sample <- sample(dois_all, n_sample)
+
+cat(sprintf("Sampled %d unique doi_o (out of %d available)\n", n_sample, length(dois_all)))
+```
+
+## Retrieve Abstracts
+
+```{r}
+#| label: fetch-abstracts
+
+articles <- fetch_abstracts(dois_sample)
+
+cat(sprintf("\nAbstracts retrieved: %d / %d\n", nrow(articles), n_sample))
+cat(sprintf("Missing: %d\n", n_sample - nrow(articles)))
+cat("\n=== Abstract Source Breakdown ===\n")
+print(count(articles, abstract_source))
+```
+
+## Classify into Subject Areas
+
+```{r}
+#| label: classify-clusters
+
+results <- classify_articles_sequential(
+ articles_df = articles,
+ title_col = "title",
+ abstract_col = "abstract",
+ journal_col = "source_display_name"
+)
+```
+
+## Classify into Subject Fields (areas with >100 articles)
+
+```{r}
+#| label: classify-fields
+
+results <- classify_fields_sequential(
+  results,
+  cluster_breakdowns = cluster_breakdowns,
+  journal_col = "source_display_name"
+)
+```
+
+## Save Results
+
+```{r}
+#| label: save
+
+# Save the validation input data (doi, title, abstract, journal, source)
+write_csv(
+  articles |> select(doi, title, abstract, source_display_name, abstract_source),
+  here::here("field_classification", "validation_articles.csv")
+)
+
+# Save classification results
+write_csv(results, here::here("field_classification", "validation_classified.csv"))
+cat("Saved validation_articles.csv and validation_classified.csv\n")
+```
+
+## Summary
+
+```{r}
+#| label: summary
+
+cat("=== Subject Area Distribution ===\n")
+results |>
+  count(cluster_id, sort = TRUE) |>
+  print(n = Inf)
+
+cat("\n=== Confidence Distribution ===\n")
+summary(results$confidence)
+
+cat("\n=== Low Confidence Articles (< 0.8) ===\n")
+low_conf <- results |> filter(confidence < 0.8)
+cat(sprintf("%d articles with confidence < 0.8\n", nrow(low_conf)))
+if (nrow(low_conf) > 0) {
+  low_conf |>
+    select(doi, title, cluster_id, confidence) |>
+    print(n = 20)
+}
+
+cat("\n=== Secondary Subject Area Assignments ===\n")
+multi <- results |> filter(!is.na(secondary_cluster_id))
+cat(sprintf("%d articles assigned a secondary Subject Area\n", nrow(multi)))
+if (nrow(multi) > 0) {
+  multi |>
+    select(doi, title, cluster_id, secondary_cluster_id, secondary_confidence) |>
+    print(n = 20)
+}
+
+if ("field_id" %in% names(results)) {
+  cat("\n=== Subject Field Distribution (where assigned) ===\n")
+  results |>
+    filter(!is.na(field_id)) |>
+    count(cluster_id, field_id, sort = TRUE) |>
+    print(n = Inf)
+}
+```

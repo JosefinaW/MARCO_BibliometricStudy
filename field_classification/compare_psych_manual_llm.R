@@ -17,14 +17,20 @@ llm <- read_csv(
   select(
     doi, title, source_display_name,
     cluster_llm = cluster_id,
-    field_llm = field_id,
-    field_confidence,
-    field_reasoning
+    secondary_cluster_llm = secondary_cluster_id,
+    field_llm = psychology_field_id,
+    secondary_field_llm = psychology_secondary_field_id,
+    field_confidence = psychology_field_confidence,
+    field_reasoning = psychology_field_reasoning
   )
 
 cmp <- manual |>
   inner_join(llm, by = "doi") |>
-  mutate(agree = field_manual == field_llm)
+  mutate(
+    agree = field_manual == field_llm,
+    agree_any = field_manual == field_llm |
+      (!is.na(secondary_field_llm) & secondary_field_llm == field_manual)
+  )
 
 n <- nrow(cmp)
 cat(sprintf("Joined rows: %d (of %d manually coded)\n\n", n, nrow(manual)))
@@ -36,16 +42,21 @@ cat(sprintf(
   "Rows where LLM also assigned a psychology subfield: %d\n", nrow(has_llm)
 ))
 cat(sprintf(
-  "Primary field agreement: %d / %d  (%.1f%%)\n\n",
+  "Primary field agreement:    %d / %d  (%.1f%%)\n",
   sum(has_llm$agree, na.rm = TRUE), nrow(has_llm),
   100 * mean(has_llm$agree, na.rm = TRUE)
 ))
+cat(sprintf(
+  "Primary or secondary match: %d / %d  (%.1f%%)\n\n",
+  sum(has_llm$agree_any, na.rm = TRUE), nrow(has_llm),
+  100 * mean(has_llm$agree_any, na.rm = TRUE)
+))
 
 # For articles the LLM did NOT classify as psychology, note the cluster it chose
-cat("=== Rows where manual = psychology-subfield but LLM put article outside psychology ===\n")
+cat("=== Rows where manual = psychology-subfield but LLM put article outside psychology (neither primary nor secondary) ===\n")
 outside <- cmp |>
   filter(is.na(field_llm)) |>
-  count(field_manual, cluster_llm, name = "n") |>
+  count(field_manual, cluster_llm, secondary_cluster_llm, name = "n") |>
   arrange(desc(n))
 if (nrow(outside) > 0) {
   print(outside, n = Inf)
