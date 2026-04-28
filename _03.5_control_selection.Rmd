@@ -22,8 +22,7 @@ pacman::p_load(
   panelView, sjrdata
 )
 ```
-#To do:
-some articles unmatched for some reason - wrong issn? find...
+
 # data loading
 
 ```{r}

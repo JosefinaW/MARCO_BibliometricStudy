@@ -145,8 +145,6 @@ matched_articles <- dplyr::select(matched_articles, -license)
 all_matched_articles <- rbind(matched_articles, out_miss)
 all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 
-# MISSING SOME OF THE JOURNAL MATCHED DOIS
-## need to move this earlier for smoother workflow
 miss_doi <- setdiff(df_meta$doi_o, all_matched_articles$doi)
 df_meta %>% filter(doi_o == "10.1007/s10802-020-00712-w")
 get2 <- df_meta %>%

@@ -266,41 +266,7 @@ mods <- mods %>%
     oa_unpaywall %>% select(doi, is_oa, oa_status),
     by = c("doi_r" = "doi")
   )
-# # Step 2: CORE
-# check_core <- function(doi) {
-#   Sys.sleep(0.1)
-#
-#   resp <- tryCatch({
-#     request("https://api.core.ac.uk/v3/works/") %>%
-#       req_url_path_append(doi) %>%
-#       req_headers(Authorization = core_key) %>%
-#       req_error(is_error = \(resp) FALSE) %>%
-#       req_perform()
-#   }, error = function(e) NULL)
-#
-#   if (is.null(resp) || resp_status(resp) != 200) {
-#     return(list(doi = doi, core_found = FALSE, core_fulltext = FALSE, core_url = NA))
-#   }
-#
-#   data <- resp_body_json(resp)
-#
-#   has_fulltext <- !is.null(data$downloadUrl) && nchar(data$downloadUrl) > 0
-#   has_source <- length(data$sourceFulltextUrls) > 0
-#
-#   list(
-#     doi = doi,
-#     core_found = TRUE,
-#     core_fulltext = has_fulltext | has_source,
-#     core_url = if (has_fulltext) data$downloadUrl else if (has_source) data$sourceFulltextUrls[[1]] else NA
-#   )
-# }
-#
-# core_results <- purrr::map_dfr(test_cases$doi_r, check_core)
-#
-# # Step 3: Combine — mark as OA if either source says so
-# combined <- oa_unpaywall %>%
-#   left_join(core_results, by = "doi") %>%
-#   mutate(is_oa_combined = is_oa | core_fulltext)
+
 ```
 #same/different journal
 ```{r}
@@ -454,27 +420,7 @@ find_scopus_auid <- function(oa_author_id, author_name, api_key, wait = 0.25) {
 }
 
 # --- Get first/last author Scopus AU-IDs from a paper's DOI ---
-#
-# TODO: With FULL-view entitlement on the Scopus Abstract Retrieval API,
-# this function can be simplified significantly. The FULL view
-# (GET /content/abstract/doi/{doi}?view=FULL) returns:
-#   - The complete author list (no 100-author cap) with AU-IDs and @seq
-#   - Correspondence info (ce:correspondence) identifying the
-#     corresponding author
-# With that access:
-#   1. Replace the Scopus Search field=author call with Abstract Retrieval
-#      view=FULL
-#   2. Extract first (@seq=1) and last (max @seq) author AU-IDs directly
-#      — no truncation, no OpenAlex fallback needed
-#   3. For consortium papers where first/last is meaningless, use the
-#      corresponding author from ce:correspondence instead
-#   4. The find_scopus_auid() helper and the entire OpenAlex fallback
-#      block can be removed
-#
-# Current approach (standard API key, no FULL view):
-# Uses Scopus Search with field=author (capped at 100 authors). For
-# mega-authored papers, uses abstract_retrieval from Scopus API for the true last
-# author
+
 get_fl_author_ids <- function(doi, api_key, wait = 0.25) {
   ab <- tryCatch(
     {
@@ -1557,7 +1503,7 @@ reg_model <- rma.mv(
   random = ~ 1 | doi_o,
   method = "REML", data = primary
 )
-# att ~ age_r + has_overlap + same_journal + publication_strategy + SNIP_centered +snip_missing + is_oa + seniority
+
 summary(reg_model)
 reg_model$sigma2[2]
 
@@ -1576,7 +1522,7 @@ plot(res)
 qqnorm(res)
 qqline(res, col = "red")
 ```
-#metaCART - single tree for testing
+#metaCART 
 
 ```{r}
 # 1) Fit metaCART
