@@ -1,5 +1,5 @@
 ---
-title: "Bib_study_workflow"
+title: "01_metadata_load"
 author: "Josefina Weinerova"
 date: "2025-08-29"
 output: html_document
@@ -11,6 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # package loading
 ```{r}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
 # install.packages("openalexR")
 if (!require(pacman)) install.packages("pacman")
 
@@ -25,7 +27,7 @@ source("R/api_cache.R")
 
 # load dataset
 ```{r}
-df <- read_csv("data/2025-02-07_COSdata_validated_delivered.csv")
+df <- read_csv("data/flora.csv")
 head(df)
 
 # remove spaces from dois
@@ -35,13 +37,10 @@ df$doi_r <- gsub(" ", "", df$doi_r)
 # what to do if multiple replications per study - replication study selection
 
 ```{r}
-df <- df %>%
-  group_by(ref_o) %>%
-  fill(doi_o, .direction = "downup") %>%
-  ungroup()
+df %>% filter(is.na(doi_o))
 
 df <- df %>%
-  group_by(ref_r) %>%
+  group_by(apa_ref_r) %>%
   fill(doi_r, .direction = "downup") %>%
   ungroup()
 
@@ -53,6 +52,7 @@ df <- df %>%
   mutate(r_key = if_else(is.na(doi_r), url_r, doi_r))
 
 # Identify doi_o where every paired replication has outcome == "failed"
+table(df$outcome)
 all_failed_dois <- df %>%
   group_by(doi_o) %>%
   summarise(all_attempts_failed = all(outcome == "failed", na.rm = TRUE), .groups = "drop") %>%
@@ -62,6 +62,12 @@ all_failed_dois <- df %>%
 df <- df %>%
   filter(doi_o %in% all_failed_dois) %>%
   select(-r_key)
+# overview
+length(unique(df$doi_o))
+nrow(df)
+length(unique(df$doi_r))
+df %>% filter(is.na(doi_r))
+df %>% group_by(author_r) %>% filter(n() > 1)
 ```
 # only failed replications
 ```{r}
@@ -102,6 +108,8 @@ meta_origOA <- OA_list
 meta_origOA <- meta_origOA %>%
   mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 df_meta <- dplyr::left_join(df, meta_origOA, by = c("doi_o" = "doi"))
+
+length(unique(df_meta$doi_o))
 ```
 
 # replication years
@@ -122,23 +130,37 @@ saveRDS(OA_list_r, "data/metadata_r_OpenAlex.rds")
 #append and select only earliest replication study
 - replication studies without doi will not have a publication year on OpenAlex and these years will be added manually
 ```{r}
-year_r <- OA_list_r %>%
+## year provided in FLoRA
+date_r <- OA_list_r %>%
   dplyr::select(
     doi_r = doi,
-    publication_year_r = publication_year
+    publication_date_r = publication_date
   )
-year_r <- year_r %>% mutate(doi_r = stringr::str_remove(doi_r, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
-df_meta <- dplyr::left_join(df_meta, year_r, by = "doi_r")
+date_r <- date_r %>% mutate(doi_r = stringr::str_remove(doi_r, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
+df_meta <- dplyr::left_join(df_meta, date_r, by = "doi_r")
 colnames(df_meta)
-# get only first replication available for that doi_o
+df_meta <- df_meta %>% distinct(doi_o, doi_r, .keep_all = TRUE)
+# get only first replication available per original study
 df_meta <- df_meta %>%
   group_by(doi_o) %>%
-  slice_min(publication_year_r, n = 1, with_ties = TRUE, na_rm = TRUE) %>%
+  slice_min(year_r, n = 1, with_ties = TRUE) %>%
+  slice_min(publication_date_r, n = 1, with_ties = TRUE) %>%
+  slice_sample(n = 1) %>%
   ungroup()
+
+df_meta %>%
+  group_by(doi_o) %>%
+  filter(n() > 1) %>% select(doi_o,doi_r,year_r,publication_date_r) %>% View()
+
+
 
 # select only studies which have replications published between 2011 and 2021
 df_meta <- df_meta %>%
-  filter(publication_year_r >= 2011 & publication_year_r <= 2021)
+  filter(year_r >= 2011 & year_r <= 2021)
+df_meta <- df_meta%>% rename(publication_year_r=year_r)
+nrow(df_meta)
+length(unique(df_meta$doi_o))
+
 ```
 
 ```{r}

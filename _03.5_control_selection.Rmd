@@ -26,7 +26,7 @@ pacman::p_load(
 # data loading
 
 ```{r}
-all_matched_articles <- readRDS("data/all_matched_articles_pilot.rds")
+all_matched_articles <- readRDS("data/all_matched_articles.rds")
 matched_journals <- readRDS("data/matched_journals_pilot.rds")
 df_journals <- sjr_journals
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
@@ -171,6 +171,7 @@ full_matched_df %>%
 
 head(full_matched_df)
 length(unique(full_matched_df$doi))
+
 ```
 
 ```{r}

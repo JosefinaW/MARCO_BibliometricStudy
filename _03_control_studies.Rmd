@@ -46,6 +46,8 @@ get_matches <- matched_journals %>%
 
 
 range(get_matches$year)
+
+str(get_matches)
 ```
 
 # query oa_fetch in batches
@@ -128,25 +130,40 @@ get <- rows_not_in_first %>%
   pivot_longer(cols = c(issn1, issn2), values_to = "issn")
 get <- get %>% filter(issn != "-")
 
-# get metadata for missing articles
-out_miss <- cached_oa_fetch(
-  entity = "works",
-  `primary_location.source.issn` = get$issn,
-  publication_year = get$publication_year,
-  type = "article",
-  options = list(
-    select = c("id", "doi", "display_name", "publication_year", "primary_location")
-  ),
-  cache_key = list(stage = "missing_journal_articles"),
-  verbose = TRUE
+fetch_missing <- purrr::slowly(
+  purrr::safely(function(issn, year) {
+    cached_oa_fetch(
+      entity = "works",
+      `primary_location.source.issn` = issn,
+      publication_year = year,
+      type = "article",
+      options = list(select = c("id", "doi", "display_name", "publication_year", "primary_location")),
+      cache_key = list(stage = "missing_journal_articles"),
+      verbose = TRUE
+    )
+  }),
+  rate = purrr::rate_delay(0.2)
 )
-out_miss <- out_miss %>% rename(title = display_name)
-matched_articles <- dplyr::select(matched_articles, -license)
+
+results_miss <- purrr::map2(
+  get$issn, get$publication_year,
+  fetch_missing,
+  .progress = TRUE
+)
+
+out_miss <- purrr::map(results_miss, ~ .x$result) %>%
+  purrr::keep(~ is.data.frame(.x) && nrow(.x) > 0) %>%
+  dplyr::bind_rows() %>%
+  dplyr::distinct(id, .keep_all = TRUE) %>%
+  dplyr::rename(title = display_name)
+## only if license is in one but not in the other
+# matched_articles <- dplyr::select(matched_articles, -license)
+# out_miss <- dplyr::select(out_miss, -license)
 all_matched_articles <- rbind(matched_articles, out_miss)
 all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 
 miss_doi <- setdiff(df_meta$doi_o, all_matched_articles$doi)
-df_meta %>% filter(doi_o == "10.1007/s10802-020-00712-w")
+
 get2 <- df_meta %>%
   filter(doi_o %in% miss_doi) %>%
   select(publication_year, issn_l)
@@ -173,5 +190,5 @@ setdiff(df_meta$doi_o, all_matched_articles$doi)
 ```
 #save ouput
 ```{r}
-saveRDS(all_matched_articles, "data/all_matched_articles_pilot.rds")
+saveRDS(all_matched_articles, "data/all_matched_articles.rds")
 ```
