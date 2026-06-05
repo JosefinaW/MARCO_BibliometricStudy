@@ -172,6 +172,7 @@ full_matched_df %>%
 
 head(full_matched_df)
 length(unique(full_matched_df$doi_o))
+length(unique(full_matched_df$doi))
 
 ```
 

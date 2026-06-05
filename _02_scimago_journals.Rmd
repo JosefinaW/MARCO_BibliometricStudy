@@ -16,8 +16,11 @@ if (!require(pacman)) install.packages("pacman")
 pacman::p_load(
   openalexR, cowplot, tidyverse, httr, jsonlite,
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
-  panelView, sjrdata, openxlsx
+  panelView, pak, openxlsx
 )
+
+pak::pak("ikashnitsky/sjrdata")
+library(sjrdata)
 ```
 #load relevant datasets
 ```{r}
@@ -315,7 +318,6 @@ matched_journals <- distinct(matched_journals)
 table(matched_journals$n_rows)
 head(matched_journals)
 setdiff(df_meta$doi_o, matched_journals$doi_o)
-
 ```
 
 
@@ -323,4 +325,5 @@ setdiff(df_meta$doi_o, matched_journals$doi_o)
 ```{r}
 saveRDS(df_journals_L, "data/df_journals_L.rds")
 saveRDS(matched_journals, "data/matched_journals_pilot.rds")
+saveRDS(missing_dois,"data/missing_from_journal_matching.rds")
 ```
