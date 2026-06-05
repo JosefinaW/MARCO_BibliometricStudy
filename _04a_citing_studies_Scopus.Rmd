@@ -31,7 +31,7 @@ df_meta <- readRDS("data/metadata_OpenAlex.rds")
 
 ```{r switch}
 # Choose citation type: "original" or "rep"
-citation_type <- "rep"
+citation_type <- "original"
 
 cfg <- switch(citation_type,
   "original" = list(

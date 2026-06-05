@@ -113,6 +113,7 @@ true_null <- true_null %>%
 true_null <- true_null %>%
   mutate(n_citations = cited_by_count, doi_queried = doi) %>%
   dplyr::select(doi_queried, n_citations, year)
+analysis_df$year <- as.numeric(analysis_df$year)
 analysis_df <- bind_rows(analysis_df, true_null)
 ```
 

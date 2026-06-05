@@ -26,8 +26,8 @@ pacman::p_load(
 # data loading
 
 ```{r}
-all_matched_articles <- readRDS("data/all_matched_articles_pilot.rds")
-matched_journals <- readRDS("data/matched_journals_pilot.rds")
+all_matched_articles <- readRDS("data/all_matched_articles.rds")
+matched_journals <- readRDS("data/matched_journals.rds")
 df_journals <- sjr_journals
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
 ```
@@ -69,7 +69,8 @@ df_journals
 ```{r}
 nrow(combination)
 combination <- combination %>%
-  filter(!is.na(doi) & !grepl("\\.supp$", doi))
+  mutate(doi = str_replace_all(doi, "/{2,}", "/")) %>%
+  filter(!is.na(doi) & !grepl("supp", doi, ignore.case = TRUE))
 combination <- combination %>%
   filter(!(doi %in% df_meta$doi_r))
 ```
@@ -167,10 +168,11 @@ full_matched_df <- full_matched_df %>%
 # check number of studies for each treated doi
 full_matched_df %>%
   dplyr::group_by(treated_doi_queried) %>%
-  summarise(n_unique = n_distinct(doi), .groups = "drop")
+  summarise(n_unique = n_distinct(doi), .groups = "drop") 
 
 head(full_matched_df)
-length(unique(full_matched_df$doi))
+length(unique(full_matched_df$doi_o))
+
 ```
 
 ```{r}

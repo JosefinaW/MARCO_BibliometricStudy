@@ -30,10 +30,11 @@ df_journals <- sjr_journals
 df_journals_L <- df_journals %>%
   separate_rows(issn, sep = "\\s*,\\s*") %>% # split on comma and space
   mutate(issn = str_trim(issn))
-# write.xlsx(df_journals_L,"df_journals_L.xlsx")
 
 ## for metadata from OA output
 df_meta <- df_meta %>% mutate(issn = str_replace_all(issn_l, "-", ""))
+
+df_meta %>% filter(is.na(issn))
 
 # merge - selecting the journals that the original studies have been published in
 journals_orig <- merge(
@@ -314,7 +315,7 @@ matched_journals <- distinct(matched_journals)
 table(matched_journals$n_rows)
 head(matched_journals)
 setdiff(df_meta$doi_o, matched_journals$doi_o)
-matched_journals %>% filter(doi_o == "10.1007/s10802-020-00712-w")
+
 ```
 
 

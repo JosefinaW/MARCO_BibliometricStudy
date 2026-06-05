@@ -21,13 +21,13 @@ pacman::p_load(
 
 # analysis - load analysis_pad file here if starting from scratch
 ```{r}
-df_journals_L <- readRDS("df_journals_L.rds")
+df_journals_L <- readRDS("data/df_journals_L.rds")
 ```
 
 #switch data source
 ```{r}
 # Choose data source: "OC" or "Scopus"
-data_source <- "Scopus"
+data_source <- "OC"
 
 analysis_padded <- switch(data_source,
   "OC" = readRDS("data/analysis_pad.rds"),
@@ -131,7 +131,7 @@ analysis_padded <- analysis_padded %>%
   fill(sjr, .direction = "down") %>%
   ungroup()
 
-analysis_padded %>% filter(is.na(sjr))
+analysis_padded <- analysis_padded %>% filter(!is.na(sjr))
 ```
 
 # analysis 
@@ -148,7 +148,7 @@ fit_factor <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 1:4,
+  r = 0:12,
   nboots = 500,
   keep.sims = TRUE,
   min.T0 = 5
@@ -166,17 +166,17 @@ fit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = fit_factor$r.cv,
+  r = 2,
   nboots = 500,
   keep.sims = TRUE,
-  min.T0 = fit_factor$r.cv + 1
+  min.T0 = 3
 )
 
 
 print(fit)
 
 plot(fit,
-  main = "Estimated ATT (FEct) - real", ylab = "Effect of D on citations",
+  main = "Estimated treatment effect", ylab = "Effect of failed replication on citations",
   cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
 )
 
@@ -195,13 +195,13 @@ fit_placebo <- fect(
   index = c("doi_queried", "year"),
   method = "ife",
   force = "two-way",
-  r = fit_factor$r.cv,
+  r = 2,
   se = TRUE,
   CV = FALSE,
   nboots = 200,
   placeboTest = TRUE,
   placebo.period = placebo_win,
-  min.T0 = fit_factor$r.cv + 1
+  min.T0 = 3
 )
 
 fit_placebo$test.out
@@ -262,17 +262,17 @@ fit_nococit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = fit_factor_nococit$r.cv,
-  nboots = 500,
+  r = 2,
+  nboots = 300,
   keep.sims = TRUE,
-  min.T0 = fit_factor_nococit$r.cv + 1
+  min.T0 = 3
 )
 
 
 print(fit_nococit)
 
 plot(fit_nococit,
-  main = "Estimated ATT (FEct) - real", ylab = "Effect of D on citations",
+  main = "Estimated average treatment effect", ylab = "Effect of failed replication on citations without co-citation",
   cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
 )
 
@@ -296,7 +296,7 @@ fit_placebo <- fect(
   nboots = 200,
   placeboTest = TRUE,
   placebo.period = placebo_win,
-  min.T0 = fit_factor_nococit$r.cv + 1
+  min.T0 = 3
 )
 
 fit_placebo$test.out
@@ -383,6 +383,8 @@ att_dynamic %>%
     subtitle = "ETWFE with Poisson family"
   ) +
   theme_minimal()
+
+emfx(etwfe_fit, type = "event") |> plot() 
 ```
 
 # for citations without co_citation
@@ -432,4 +434,3 @@ att_dynamic %>%
 ```
 
 
-```
