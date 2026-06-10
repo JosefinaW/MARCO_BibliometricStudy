@@ -210,6 +210,33 @@ cached_citation_retrieval <- function(doi, api_key, date_range = c("1900", "2025
   )
 }
 
+cached_scopus_cite_count <- function(doi, api_key, cache_root = "data/api_cache") {
+  api_cache(
+    service = "scopus_cite_count",
+    key     = list(doi = doi),
+    cache_root = cache_root,
+    code = {
+      res    <- rscopus::abstract_retrieval(
+        id         = doi,
+        identifier = "doi",
+        api_key    = api_key
+      )
+      status <- httr::status_code(res$get_statement)
+      # 200 = found, 404 = not indexed in Scopus, other = API error
+      found  <- if (status == 200) TRUE
+                else if (status == 404) FALSE
+                else NA
+      ct     <- if (!isTRUE(found)) NULL
+                else res$content$`abstracts-retrieval-response`$coredata$`citedby-count`
+      list(
+        status_code = status,
+        found       = found,
+        count       = if (is.null(ct)) NA_integer_ else as.integer(ct)
+      )
+    }
+  )
+}
+
 cached_abstract_retrieval <- function(id, identifier = "doi", api_key,
                                       cache_root = "data/api_cache") {
   api_cache(

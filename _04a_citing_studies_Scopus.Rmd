@@ -28,10 +28,9 @@ full_matched_df <- readRDS("data/full_matched_df.rds")
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
 ```
 # Switch citation type
-
 ```{r switch}
 # Choose citation type: "original" or "rep"
-citation_type <- "original"
+citation_type <- "rep"
 
 cfg <- switch(citation_type,
   "original" = list(

@@ -27,7 +27,7 @@ df_journals_L <- readRDS("data/df_journals_L.rds")
 #switch data source
 ```{r}
 # Choose data source: "OC" or "Scopus"
-data_source <- "OC"
+data_source <- "Scopus"
 
 analysis_padded <- switch(data_source,
   "OC" = readRDS("data/analysis_pad.rds"),
@@ -86,7 +86,9 @@ analysis_padded %>%
   pivot_wider(names_from = ever_treated, values_from = n, values_fill = 0) %>%
   mutate(ratio = `FALSE` / `TRUE`)
 
+full_matched_df %>% filter(publication_year ==1989) %>% View
 
+setdiff(full_matched_df$doi_o,analysis_padded$doi_queried)
 analysis_padded %>%
   dplyr::group_by(doi_queried) %>%
   filter(any(D == 1)) %>%
@@ -98,8 +100,8 @@ analysis_padded %>%
     gridOff = TRUE
   )
 
-
-analysis_padded %>% head()
+analysis_padded %>% filter(doi_queried=="10.1037/0022-3514.56.6.972") %>% View
+table(analysis_padded$publication_year)
 ```
 # add covariates
 ```{r}
@@ -132,12 +134,13 @@ analysis_padded <- analysis_padded %>%
   ungroup()
 
 analysis_padded <- analysis_padded %>% filter(!is.na(sjr))
+
 ```
 
 # analysis 
 ```{r}
 str(analysis_padded)
-
+summary(analysis_padded)
 # Identify number of factors
 
 fit_factor <- fect(
@@ -148,7 +151,7 @@ fit_factor <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 0:12,
+  r = 0:5,
   nboots = 500,
   keep.sims = TRUE,
   min.T0 = 5
@@ -385,6 +388,12 @@ att_dynamic %>%
   theme_minimal()
 
 emfx(etwfe_fit, type = "event") |> plot() 
+
+# Overall ATT — equivalent to fect's "Tr obs equally weighted"
+emfx(etwfe_fit, type = "simple") %>% plot()
+
+# By cohort (closer to "Tr units equally weighted" — each treatment timing group gets equal weight)
+emfx(etwfe_fit, type = "group") %>% plot()
 ```
 
 # for citations without co_citation

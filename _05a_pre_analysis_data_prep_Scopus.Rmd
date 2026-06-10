@@ -47,6 +47,7 @@ control_cit_per_year <- control_cit_per_year %>%
 analysis_df_Scopus <- control_cit_per_year
 
 null_doi <- setdiff(full_matched_df$doi, analysis_df_Scopus$doi_queried)
+length(setdiff(analysis_df_Scopus$doi_queried,full_matched_df$doi))
 null_doi <- null_doi[!is.na(null_doi) & null_doi != "NA" & null_doi != ""]
 null_doi <- unique(null_doi)
 length(null_doi)
@@ -54,49 +55,120 @@ length(null_doi)
 
 #checking whether not returned dois are null
 ```{r}
-key <- Sys.getenv("SCOPUS_API_KEY")
+# # this API endpoint seems to not work at the moment
+# key <- Sys.getenv("SCOPUS_API_KEY")
 
-results <- purrr::map(
-  null_doi,
-  ~ cached_citation_retrieval(doi = .x, api_key = key, date_range = c("1900", "2025"))
-)
-ok <- purrr::map_lgl(results, ~ .x$status_code < 400)
+# results <- purrr::map(
+#   null_doi,
+#   ~ cached_citation_retrieval(doi = .x, api_key = key, date_range = c("1900", "2025"))
+# )
+# ok <- purrr::map_lgl(results, ~ .x$status_code < 400)
 
+# table(ok) 
+
+# parsed <- results[ok] %>%
+#   purrr::map("parsed")
+# dois_ok <- null_doi[ok]
+
+# str(parsed[[1]]$citation_info)
+# names(parsed[[1]]$citation_info)
+
+# citations_null <- purrr::imap_dfr(parsed, \(x, i) {
+#   x$citation_info %>%
+#     select(matches("^cc\\.\\d{4}$")) %>%
+#     mutate(doi = dois_ok[[i]], .before = 1)
+# }) %>%
+#   pivot_longer(
+#     cols = matches("^cc\\.\\d{4}$"),
+#     names_to = "year",
+#     values_to = "citations"
+#   ) %>%
+#   mutate(
+#     year = as.integer(str_remove(year, "^cc\\.")),
+#     citations = as.integer(citations)
+#   )
+```
+
+#alternative API endpoint to get confirmation for whether not returned dois have 0 citations or are not indexed in Scopus
+```{r}
+rscopus::set_api_key(key)
+
+results <- purrr::set_names(null_doi) %>%
+  purrr::map(~ cached_scopus_cite_count(.x, api_key = key))
+
+
+# which returned a clean response
+ok <- purrr::map_lgl(results, ~ !is.na(.x$found))
 table(ok)
 
-parsed <- results[ok] %>%
-  purrr::map("parsed")
-dois_ok <- null_doi[ok]
+# build summary table — one row per DOI
+cite_check <- purrr::imap_dfr(results, ~ tibble(
+  doi         = .y,
+  status_code = .x$status_code,
+  found       = .x$found,
+  count       = .x$count
+)) %>%
+  mutate(verdict = case_when(
+    is.na(found)  ~ "API error – inconclusive",
+    !found        ~ "Not indexed in Scopus – _04a zero is an indexing gap",
+    count == 0    ~ "Indexed, truly 0 citations",
+    count  > 0    ~ "Indexed, has citations – possible _04a retrieval error"
+  ))
 
-str(parsed[[1]]$citation_info)
-names(parsed[[1]]$citation_info)
+table(cite_check$verdict)
 
-citations_null <- purrr::imap_dfr(parsed, \(x, i) {
-  x$citation_info %>%
-    select(matches("^cc\\.\\d{4}$")) %>%
-    mutate(doi = dois_ok[[i]], .before = 1)
-}) %>%
-  pivot_longer(
-    cols = matches("^cc\\.\\d{4}$"),
-    names_to = "year",
-    values_to = "citations"
+#append true 0 doi
+citations_null <- cite_check %>%
+  filter(count == 0) %>%
+  select(doi_queried = doi) %>%
+  left_join(
+    full_matched_df %>% select(doi_queried = doi, publication_year),
+    by = "doi_queried"
   ) %>%
-  mutate(
-    year = as.integer(str_remove(year, "^cc\\.")),
-    citations = as.integer(citations)
-  )
-
-citations_null <- citations_null %>%
-  dplyr::group_by(doi) %>%
-  filter(all(citations == 0))
-colnames(citations_null) <- colnames(analysis_df_Scopus)
-
+  filter(!is.na(publication_year)) %>%
+  rowwise() %>%
+  mutate(year = list(seq(publication_year, 2025))) %>%
+  unnest(year) %>%
+  mutate(n_citations = 0L) %>%
+  select(doi_queried, year, n_citations)
+```
+```{r}
 analysis_df_Scopus <- bind_rows(analysis_df_Scopus, citations_null)
 ```
 
+```{r}
+# key <- Sys.getenv("SCOPUS_API_KEY")
 
+# # res <- rscopus::citation_retrieval(
+# #   doi = "10.1038/ng.2429",
+# #   api_key = key,
+# #   date_range = c("1900", "2025")
+# # )
+
+# httr::status_code(res$get_statement)  # check if it worked
+# rscopus::parse_citation_retrieval(res) # parse the result
+
+# # other endpoint
+
+# key <- Sys.getenv("SCOPUS_API_KEY")
+
+# # Step 1: get the EID for your DOI
+# res0 <- rscopus::scopus_search(
+#   query = "DOI(10.1016/j.jfineco.2014.02.006)",
+#   count = 1,
+#   api_key = key
+# )
+# eid <- rscopus::gen_entries_to_df(res0$entries)$df$eid[1]
+
+# # Step 2: get citing studies
+# citers <- rscopus::scopus_search(
+#   query = paste0("REFEID(", eid, ")"),
+#   count = 200,
+#   api_key = key
+# )
+```
 #metadata for replications - year of publication
-- some replication studies do not have doi, and therefore cannot get metadata through API, the year will be filled manually from web search for those
+- ~~some replication studies do not have doi, and therefore cannot get metadata through API, the year will be filled manually from web search for those~~ [year is coded in FLoRA so not necessary anymore]
 
 # pre-analysis modification
 
