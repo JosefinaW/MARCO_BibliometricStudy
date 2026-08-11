@@ -33,6 +33,10 @@ head(df)
 # remove spaces from dois
 df$doi_o <- gsub(" ", "", df$doi_o)
 df$doi_r <- gsub(" ", "", df$doi_r)
+
+# mutate dois to lower case
+df <- df %>% mutate(doi_o = tolower(as.character(doi_o)))
+df <- df %>% mutate(doi_r = tolower(as.character(doi_r)))
 ```
 # what to do if multiple replications per study - replication study selection
 
@@ -66,14 +70,8 @@ df <- df %>%
 length(unique(df$doi_o))
 nrow(df)
 length(unique(df$doi_r))
-df %>% filter(is.na(doi_r))
+df %>% filter(is.na(doi_r)) %>% select(doi_o, url_r)
 df %>% group_by(author_r) %>% filter(n() > 1)
-```
-# only failed replications
-```{r}
-# mutate dois to lower case
-df <- df %>% mutate(doi_o = tolower(as.character(doi_o)))
-df <- df %>% mutate(doi_r = tolower(as.character(doi_r)))
 ```
 
 # getting metadata for the original studies
@@ -110,6 +108,8 @@ meta_origOA <- meta_origOA %>%
 df_meta <- dplyr::left_join(df, meta_origOA, by = c("doi_o" = "doi"))
 
 length(unique(df_meta$doi_o))
+
+setdiff(df$doi_o, df_meta$doi_o)
 ```
 
 # replication years

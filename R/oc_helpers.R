@@ -91,15 +91,30 @@ run_oc_citing_pipeline <- function(dois, access_token,
 
   oc_ensure_output(outfile)
 
-  # resume support
-  start_idx <- if (file.exists(checkpoint_rds)) as.integer(readRDS(checkpoint_rds)) else 1L
-  if (start_idx == 1L && file.exists(failed_log)) file.remove(failed_log)
+  # DOI-based resume: skip anything already in outfile or failed_log
+  done_dois <- character()
+  if (file.exists(outfile)) {
+    existing <- data.table::fread(outfile, select = "doi_queried", data.table = FALSE)
+    done_dois <- union(done_dois, unique(existing$doi_queried))
+  }
+  if (file.exists(failed_log)) {
+    done_dois <- union(done_dois, readLines(failed_log))
+  }
+
+  to_run <- setdiff(dois, done_dois)
+
+  if (length(to_run) == 0) {
+    message("All DOIs already processed. Nothing to do.")
+    return(invisible(NULL))
+  }
+
+  n_skipped <- length(dois) - length(to_run)
+  message(sprintf("Skipping %d already-processed DOIs; %d remaining.", n_skipped, length(to_run)))
 
   # purrr rate & retry wrappers
   backoff <- purrr::rate_backoff(pause_base = 1, pause_cap = 60, jitter = TRUE)
   throttle <- purrr::rate_delay(pause = throttle_s)
 
-  # closure over base_url and access_token
   fetch_one <- function(doi) oc_base_fetch(doi, base_url, access_token)
 
   fetch_wrapped <- purrr::slowly(
@@ -110,23 +125,12 @@ run_oc_citing_pipeline <- function(dois, access_token,
 
   fetch_safe <- purrr::safely(fetch_wrapped, otherwise = NULL)
 
-  # chunked processing with append & checkpoint
-  n <- length(dois)
-
-  if (start_idx > n) {
-    message("All DOIs already processed according to checkpoint. Nothing to do.")
-    return(invisible(NULL))
-  }
-
-  remaining <- dois[start_idx:n]
-  groups <- split(remaining, ceiling(seq_along(remaining) / chunk_size))
+  n <- length(to_run)
+  groups <- split(to_run, ceiling(seq_along(to_run) / chunk_size))
 
   purrr::walk2(groups, seq_along(groups), function(chunk, gidx) {
-    rng <- c(
-      start_idx + (gidx - 1L) * chunk_size,
-      min(start_idx + gidx * chunk_size - 1L, n)
-    )
-    message(sprintf("Processing DOIs %d-%d of %d", rng[1], rng[2], n))
+    rng <- c((gidx - 1L) * chunk_size + 1L, min(gidx * chunk_size, n))
+    message(sprintf("Processing DOIs %d-%d of %d remaining", rng[1], rng[2], n))
 
     res <- purrr::map(rlang::set_names(chunk, chunk), fetch_safe)
 
@@ -145,16 +149,15 @@ run_oc_citing_pipeline <- function(dois, access_token,
       rm(out)
     }
 
+    # log 404s alongside failures so they are skipped on resume
+    not_found    <- names(purrr::keep(res, ~ is.null(.x$error) && isTRUE(.x$result$not_found)))
     failed_nonretry <- names(purrr::keep(res, ~ is.null(.x$error) && isTRUE(.x$result$failed)))
-    failed_errors <- names(purrr::keep(res, ~ !is.null(.x$error)))
-    failed_local <- c(failed_nonretry, failed_errors)
+    failed_errors   <- names(purrr::keep(res, ~ !is.null(.x$error)))
+    failed_local <- c(not_found, failed_nonretry, failed_errors)
 
     if (length(failed_local)) {
       write_lines_atomic(failed_local, failed_log, unique_only = TRUE)
     }
-
-    last_idx <- rng[2]
-    save_rds_atomic(last_idx + 1L, checkpoint_rds)
 
     rm(res, dfs, ok)
     gc()

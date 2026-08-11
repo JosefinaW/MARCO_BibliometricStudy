@@ -68,7 +68,7 @@ closest <- journals_orig %>%
 
 # 3) combine
 journals_best <- bind_rows(exacts, closest)
-setdiff(df_meta$doi_o, journals_best$doi_o) # checking that all dois that are in the meta df are also in the journals_best
+missing_dois <- setdiff(df_meta$doi_o, journals_best$doi_o) # checking that all dois that are in the meta df are also in the journals_best
 ```
 # cleaning
 ```{r}

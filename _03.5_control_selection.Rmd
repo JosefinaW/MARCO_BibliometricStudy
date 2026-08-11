@@ -73,6 +73,9 @@ combination <- combination %>%
   filter(!is.na(doi) & !grepl("supp", doi, ignore.case = TRUE))
 combination <- combination %>%
   filter(!(doi %in% df_meta$doi_r))
+
+combination <- combination %>%
+  mutate(doi_o = str_replace_all(doi_o, "/{2,}", "/"))
 ```
 # subselect
 ```{r}
@@ -179,3 +182,4 @@ length(unique(full_matched_df$doi))
 ```{r}
 saveRDS(full_matched_df, "data/full_matched_df.rds")
 ```
+

@@ -27,7 +27,7 @@ df_journals_L <- readRDS("data/df_journals_L.rds")
 #switch data source
 ```{r}
 # Choose data source: "OC" or "Scopus"
-data_source <- "Scopus"
+data_source <- "OC"
 
 analysis_padded <- switch(data_source,
   "OC" = readRDS("data/analysis_pad.rds"),
@@ -85,8 +85,6 @@ analysis_padded %>%
   count(publication_year, ever_treated) %>%
   pivot_wider(names_from = ever_treated, values_from = n, values_fill = 0) %>%
   mutate(ratio = `FALSE` / `TRUE`)
-
-full_matched_df %>% filter(publication_year ==1989) %>% View
 
 setdiff(full_matched_df$doi_o,analysis_padded$doi_queried)
 analysis_padded %>%
@@ -169,18 +167,27 @@ fit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 2,
+  r = 1,
   nboots = 500,
   keep.sims = TRUE,
   min.T0 = 3
 )
 
-
+fit <- readRDS("models/fit_nococitation_Scopus.rds")
 print(fit)
 
 plot(fit,
   main = "Estimated treatment effect", ylab = "Effect of failed replication on citations",
   cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
+)
+
+plot(fit,
+  main = "Estimated treatment effect",
+  ylab = "Effect of failed replication on citations",
+  cex.main = 1.5,   # title
+  cex.lab  = 1.5,   # axis labels
+  cex.axis = 1.5,   # axis tick numbers
+  cex.text = 1.5    # text annotations inside the plot (N counts etc.)
 )
 
 
@@ -265,7 +272,7 @@ fit_nococit <- fect(
   force = "two-way",
   se = TRUE,
   CV = TRUE,
-  r = 2,
+  r = 1,
   nboots = 300,
   keep.sims = TRUE,
   min.T0 = 3
@@ -293,7 +300,7 @@ fit_placebo <- fect(
   index = c("doi_queried", "year"),
   method = "ife",
   force = "two-way",
-  r = fit_factor_nococit$r.cv,
+  r = 1,
   se = TRUE,
   CV = FALSE,
   nboots = 200,
