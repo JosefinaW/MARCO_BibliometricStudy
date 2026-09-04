@@ -334,6 +334,54 @@ Respond with a JSON object containing:
 '
 ```
 
+### Economics & Business Fields Classification Prompt Template
+
+```{r}
+#| label: field-prompt-economics-template
+#| echo: true
+#| code-fold: false
+
+# Reference template - used with glue(economics_field_prompt_template, economics_fields_schema = economics_fields_json)
+economics_field_prompt_template <- '
+You classify economics and business articles into a single primary subfield (Subject Field).
+
+Use ONLY the fields defined in the JSON array below.
+If the journal is subfield-specific, use that field unless the abstract clearly belongs to a different field
+(e.g. Journal of Finance → Finance; Journal of Consumer Research → Marketing; MIS Quarterly → Business Informatics;
+Labour Economics, Health Economics, Journal of Public Economics → Microeconomics).
+Use the article title and abstract only for general economics journals (e.g. American Economic Review,
+Quarterly Journal of Economics, Econometrica, Journal of Political Economy, Journal of Applied Econometrics).
+If journal_title names a repository, preprint server, working-paper series or university archive rather than a journal
+(e.g. SSRN, NBER, "... Open Research"), ignore it and classify from title and abstract.
+Never invent new fields; always return one of the existing id values.
+
+Key distinctions:
+- Microeconomics vs Macroeconomics: unit of analysis. Individuals, households, firms or single markets → Micro;
+  countries or the aggregate economy → Macro. Cross-country growth and development regressions → Macro;
+  development studies with household, firm or village data → Micro
+- Sub-national units (states, provinces, cities) follow the topic, not the unit: public services, crime, health,
+  education, labour or migration policy → Micro; growth, inflation, aggregate output → Macro
+- Econometric methods papers: classify by the domain of the application; default to Microeconomics
+- Behavioural/Experimental Economics: only for behavioural or experimental economics venues, or for incentivised
+  experiments and behavioural models in general economics journals. Behavioural work in marketing, accounting,
+  finance or labour journals keeps the field of that journal
+- Finance vs Macroeconomics: asset prices, returns, capital structure, firm or household credit → Finance;
+  monetary policy, financial crises, systemic risk and credit aggregates at country level → Macro
+- Microcredit and financial access as development interventions → Microeconomics
+- Finance vs Business Administration: financial markets and corporate finance → Finance; management, strategy, accounting → Business Administration
+- Marketing vs Business Administration: consumer research, branding, advertising → Marketing
+
+AVAILABLE FIELDS (JSON array):
+{economics_fields_schema}
+
+You will receive articles as JSON with: article_title, article_abstract, journal_title
+
+Respond with a JSON object containing:
+- "field_id": the id of the matching field (string)
+- "confidence": your confidence from 0 to 1 (number)
+'
+```
+
 ## Chat Constructors with Provider Flexibility
 
 Simple glue templates using already-loaded JSON. Edit templates above to tune prompt behavior.
@@ -385,18 +433,17 @@ create_cluster_chat <- function(
   }
 }
 
-# Create psychology classification chat
-create_psychology_chat <- function(
+# Create a field (subfield) classification chat for one cluster
+create_field_chat <- function(
+  system_prompt,
+  cache_key,
   model = "openai/gpt-oss-120b",
   provider = "deepinfra",
   api_args = list(temperature = 0)
 ) {
-  system_prompt <- glue(psychology_field_prompt_template,
-                        psychology_fields_schema = psychology_fields_json)
-
   if (provider == "deepinfra") {
     deepinfra_args <- modifyList(api_args, list(
-      prompt_cache_key = "psychology_field_classification"
+      prompt_cache_key = cache_key
     ))
     chat_openai_compatible(
       base_url = "https://api.deepinfra.com/v1/openai",
@@ -425,9 +472,29 @@ create_psychology_chat <- function(
     stop("Provider must be 'deepinfra', 'openai', or 'anthropic'")
   }
 }
+
+create_psychology_chat <- function(...) {
+  create_field_chat(
+    system_prompt = glue(psychology_field_prompt_template,
+                         psychology_fields_schema = psychology_fields_json),
+    cache_key = "psychology_field_classification",
+    ...
+  )
+}
+
+create_economics_chat <- function(...) {
+  create_field_chat(
+    system_prompt = glue(economics_field_prompt_template,
+                         economics_fields_schema = economics_fields_json),
+    cache_key = "economics_field_classification",
+    ...
+  )
+}
 ```
 
 ## Cluster Field Breakdown Configuration
+
+Keys must match the cluster ids in the cluster schema.
 
 ```{r}
 #| label: cluster-breakdowns
@@ -439,13 +506,13 @@ cluster_breakdowns <- list(
     schema_json = psychology_fields_json,
     prompt_template = psychology_field_prompt_template,
     chat_constructor = create_psychology_chat
+  ),
+  economics_business = list(
+    schema = economics_fields_schema,
+    schema_json = economics_fields_json,
+    prompt_template = economics_field_prompt_template,
+    chat_constructor = create_economics_chat
   )
-  # economics = list(
-  #   schema = economics_fields_schema,
-  #   schema_json = economics_fields_json,
-  #   prompt_template = economics_field_prompt_template,
-  #   chat_constructor = create_economics_chat
-  # )
 )
 ```
 

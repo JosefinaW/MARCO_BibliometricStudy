@@ -1,42 +1,97 @@
 {
   "cluster_id": "economics_business",
   "cluster_label": "Economics & Business",
-  "version": "economics-fields-v1.0",
+  "version": "economics-fields-v2.1",
   "fields": [
     {
-      "id": "economics_general",
-      "label": "Economics (General)",
-      "description": "Microeconomics, macroeconomics, econometrics, economic theory, labour, public, international, development economics",
-      "exclusions": ["Firm-level management → Business Administration", "Individual decision-making focus → Behavioural/Experimental Economics"]
+      "id": "microeconomics",
+      "label": "Microeconomics",
+      "description": "Household, firm and market behaviour: labour, public economics and taxation, industrial organisation, education, health, crime, development economics using household, firm or village data, applied microeconometrics, microeconomic theory",
+      "positive_criteria": [
+        "Unit of analysis is individuals, households, firms or single markets",
+        "Policy evaluation with micro data (e.g. tax, welfare, schooling, labour market programmes)",
+        "Sub-national units (states, provinces, cities) when the topic is public services, crime, health, education or labour policy"
+      ],
+      "exclusions": [
+        "Aggregate economy, growth, business cycles, monetary or fiscal aggregates → Macroeconomics",
+        "Asset pricing, corporate finance, banking → Finance",
+        "Experimental or behavioural decision-making studies → Behavioural/Experimental Economics",
+        "Firm-level management or strategy → Business Administration",
+        "Cross-country growth and development regressions → Macroeconomics"
+      ]
+    },
+    {
+      "id": "macroeconomics",
+      "label": "Macroeconomics",
+      "description": "Aggregate economy: growth, business cycles, monetary and fiscal policy, inflation, unemployment at the aggregate level, international trade and finance, financial crises and macro-financial stability, macroeconometrics and forecasting",
+      "positive_criteria": [
+        "Unit of analysis is countries, regions or the aggregate economy",
+        "Uses macro time series, panels of countries or DSGE-style models",
+        "Cross-country growth and development regressions",
+        "Sub-national units when the topic is growth, inflation or aggregate output"
+      ],
+      "exclusions": [
+        "Individual or firm-level micro data as the main evidence → Microeconomics",
+        "Asset pricing and financial markets → Finance"
+      ]
     },
     {
       "id": "behavioural_experimental_economics",
       "label": "Behavioural/Experimental Economics",
-      "description": "Economic decision-making with experimental methods. Must have explicit economic framing: utility, incentives, markets, auctions, game theory",
-      "exclusions": ["General JDM without economic framing → Psychology (Cognitive)", "Consumer behaviour without theory → Marketing"]
+      "description": "Economic decision-making studied with behavioural theory and usually experimental methods (lab, field or online experiments). Must have explicit economic framing: utility, incentives, markets, auctions, game theory, social preferences",
+      "positive_criteria": [
+        "Published in a behavioural or experimental economics venue (e.g. Experimental Economics, Journal of Economic Behavior & Organization, Games and Economic Behavior)",
+        "Incentivised experiment or behavioural model in a general economics journal"
+      ],
+      "exclusions": [
+        "General judgement and decision-making without economic framing → Psychology (Cognitive)",
+        "Consumer behaviour without economic theory → Marketing",
+        "Behavioural or experimental work in marketing, accounting, finance or labour journals → that journal's field"
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "Finance",
+      "description": "Asset pricing, financial markets, corporate finance, banking, investor behaviour, household finance in developed credit and asset markets",
+      "positive_criteria": [
+        "Outcomes are prices, returns, capital structure, credit or investment decisions"
+      ],
+      "exclusions": [
+        "Monetary policy and macro-financial aggregates → Macroeconomics",
+        "Accounting and management control → Business Administration",
+        "Financial crises, systemic risk and credit aggregates studied at the country level → Macroeconomics",
+        "Microcredit and financial access as a development intervention → Microeconomics"
+      ]
     },
     {
       "id": "business_administration",
       "label": "Business Administration",
-      "description": "Management, strategy, operations, supply chain, accounting, finance, entrepreneurship, innovation",
-      "exclusions": ["Marketing/consumer research → Marketing", "Organisational behaviour theory → Psychology"]
+      "description": "Management, strategy, operations, supply chain, accounting, entrepreneurship, innovation, human resource management",
+      "exclusions": [
+        "Marketing and consumer research → Marketing",
+        "Corporate finance and financial markets → Finance",
+        "Organisational behaviour theory in psychology venues → Psychology"
+      ],
+      "positive_criteria": [
+        "Unit of analysis is the firm or manager; outcomes are strategy, performance, innovation, accounting or HR practice"
+      ]
     },
     {
       "id": "marketing",
       "label": "Marketing",
       "description": "Marketing strategy, consumer behaviour, branding, advertising, market research, sales, pricing",
-      "exclusions": "Social-psychological theory in psychology venues → Social Psychology"
+      "exclusions": [
+        "Social-psychological theory in psychology venues → Social Psychology"
+      ]
     },
     {
       "id": "business_informatics",
       "label": "Business Informatics",
       "description": "Information systems, enterprise systems, digital transformation, IT management",
-      "exclusions": ["Pure computer science → Computer Science", "Business AI without IS focus → Computer Science/Business Admin"]
-    },
-    {
-      "id": "public_finance",
-      "label": "Public Finance",
-      "description": "Government budgets, taxation, public expenditure, fiscal policy"
+      "exclusions": [
+        "Pure computer science → Computer Science",
+        "Business AI without information-systems focus → Computer Science/Business Admin"
+      ]
     }
   ]
 }
