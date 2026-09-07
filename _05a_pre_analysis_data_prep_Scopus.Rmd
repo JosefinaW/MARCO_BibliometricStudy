@@ -91,6 +91,7 @@ length(null_doi)
 
 #alternative API endpoint to get confirmation for whether not returned dois have 0 citations or are not indexed in Scopus
 ```{r}
+key <- Sys.getenv("SCOPUS_API_KEY")
 rscopus::set_api_key(key)
 
 results <- purrr::set_names(null_doi) %>%
@@ -167,7 +168,7 @@ analysis_df_Scopus <- bind_rows(analysis_df_Scopus, citations_null)
 #   api_key = key
 # )
 ```
-#metadata for replications - year of publication
+# metadata for replications - year of publication
 - ~~some replication studies do not have doi, and therefore cannot get metadata through API, the year will be filled manually from web search for those~~ [year is coded in FLoRA so not necessary anymore]
 
 # pre-analysis modification

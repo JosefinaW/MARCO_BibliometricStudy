@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 # package loading
 ```{r}
+rm(list = ls())
+gc()
 if (!require(pacman)) install.packages("pacman")
 
 pacman::p_load(
@@ -27,7 +29,7 @@ df_journals_L <- readRDS("data/df_journals_L.rds")
 #switch data source
 ```{r}
 # Choose data source: "OC" or "Scopus"
-data_source <- "OC"
+data_source <- "Scopus"
 
 analysis_padded <- switch(data_source,
   "OC" = readRDS("data/analysis_pad.rds"),
@@ -59,6 +61,7 @@ analysis_padded %>%
     pre_n_min = min(pre_n[ever_treated], na.rm = TRUE),
     pre_n_max = max(pre_n[ever_treated], na.rm = TRUE),
     pre_n_below_5 = sum(pre_n[ever_treated] < 5, na.rm = TRUE),
+    pre_n_below_3 = sum(pre_n[ever_treated] < 3, na.rm = TRUE),
     post_n_median = median(post_n[ever_treated], na.rm = TRUE),
     post_n_min = min(post_n[ever_treated], na.rm = TRUE),
     post_n_max = max(post_n[ever_treated], na.rm = TRUE),
@@ -86,7 +89,6 @@ analysis_padded %>%
   pivot_wider(names_from = ever_treated, values_from = n, values_fill = 0) %>%
   mutate(ratio = `FALSE` / `TRUE`)
 
-setdiff(full_matched_df$doi_o,analysis_padded$doi_queried)
 analysis_padded %>%
   dplyr::group_by(doi_queried) %>%
   filter(any(D == 1)) %>%
@@ -98,7 +100,6 @@ analysis_padded %>%
     gridOff = TRUE
   )
 
-analysis_padded %>% filter(doi_queried=="10.1037/0022-3514.56.6.972") %>% View
 table(analysis_padded$publication_year)
 ```
 # add covariates
@@ -135,7 +136,7 @@ analysis_padded <- analysis_padded %>% filter(!is.na(sjr))
 
 ```
 
-# analysis 
+# analysis test for number of factors
 ```{r}
 str(analysis_padded)
 summary(analysis_padded)
@@ -151,7 +152,7 @@ fit_factor <- fect(
   CV = TRUE,
   r = 0:5,
   nboots = 500,
-  keep.sims = TRUE,
+  keep.sims = FALSE,
   min.T0 = 5
 )
 ```
@@ -169,17 +170,13 @@ fit <- fect(
   CV = TRUE,
   r = 1,
   nboots = 500,
-  keep.sims = TRUE,
+  keep.sims = FALSE,
   min.T0 = 3
 )
 
-fit <- readRDS("models/fit_nococitation_Scopus.rds")
+
 print(fit)
 
-plot(fit,
-  main = "Estimated treatment effect", ylab = "Effect of failed replication on citations",
-  cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8
-)
 
 plot(fit,
   main = "Estimated treatment effect",
@@ -205,7 +202,7 @@ fit_placebo <- fect(
   index = c("doi_queried", "year"),
   method = "ife",
   force = "two-way",
-  r = 2,
+  r = 1,
   se = TRUE,
   CV = FALSE,
   nboots = 200,

@@ -23,11 +23,11 @@ source("R/api_cache.R")
 ```
 # load dataset
 ```{r}
-abstracts_already <- readRDS("data/abstracts.csv")
+abstracts_already <- read.csv("data/abstracts.csv", sep= ";")
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
 # remove spaces from dois
-df$doi_o <- gsub(" ", "", df$doi_o)
-df$doi_r <- gsub(" ", "", df$doi_r)
+df_meta$doi_o <- gsub(" ", "", df_meta$doi_o)
+df_meta$doi_r <- gsub(" ", "", df_meta$doi_r)
 ```
 
 #already existing abstracts
@@ -50,9 +50,7 @@ dois_abstract <- abstract_df %>%
   filter(is.na(abstract)) %>%
   select(doi_o)
 dois_abstract <- unique(dois_abstract$doi_o)
-email <- Sys.getenv("MY_EMAIL")
-## add email address to run!
-options(openalexR.mailto = email)
+options(openalexR.apikey = Sys.getenv("OA_API_KEY"))
 # fetch metadata
 OA_abstract <- cached_oa_fetch(
   entity = "works",
@@ -123,7 +121,7 @@ abstract_df <- abstract_df %>%
     abstract = coalesce(abstract, abstract_filled),
     title = coalesce(title, title_filled) # fill NAs in title and abstract with newly collected ones
   ) %>%
-  select(-abstract_filled, -title_filled, -title_new)
+  select(-abstract_filled, -title_filled)
 
 abstract_df %>%
   filter(is.na(abstract)) %>% View()

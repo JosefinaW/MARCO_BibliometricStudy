@@ -78,9 +78,7 @@ df %>% group_by(author_r) %>% filter(n() > 1)
 ```{r}
 # get dois for originals studies (here from Open Alex)
 dois <- unique(na.omit(df$doi_o))
-email <- Sys.getenv("MY_EMAIL")
-## add email address to run!
-options(openalexR.mailto = email)
+options(openalexR.apikey = Sys.getenv("OA_API_KEY"))
 # fetch metadata
 OA_list <- cached_oa_fetch(
   entity = "works",
@@ -105,7 +103,7 @@ meta_origOA <- OA_list
 ## remove web address part of doi
 meta_origOA <- meta_origOA %>%
   mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
-df_meta <- dplyr::left_join(df, meta_origOA, by = c("doi_o" = "doi"))
+df_meta <- dplyr::left_join(df, meta_origOA, by = c("doi_o" = "doi"),relationship = "many-to-many")
 
 length(unique(df_meta$doi_o))
 
@@ -115,8 +113,7 @@ setdiff(df$doi_o, df_meta$doi_o)
 # replication years
 ```{r}
 doi_r <- unique(na.omit(df$doi_r))
-## add email address to run!
-options(openalexR.mailto = email)
+options(openalexR.apikey = Sys.getenv("OA_API_KEY"))
 # fetch metadata
 OA_list_r <- cached_oa_fetch(
   entity = "works",

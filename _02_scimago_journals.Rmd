@@ -18,8 +18,6 @@ pacman::p_load(
   citecorp, rcrossref, purrr, dplyr, tibble, fect, furrr, future, data.table,
   panelView, pak, openxlsx
 )
-
-pak::pak("ikashnitsky/sjrdata")
 library(sjrdata)
 ```
 #load relevant datasets
@@ -324,6 +322,6 @@ setdiff(df_meta$doi_o, matched_journals$doi_o)
 #save output
 ```{r}
 saveRDS(df_journals_L, "data/df_journals_L.rds")
-saveRDS(matched_journals, "data/matched_journals_pilot.rds")
+saveRDS(matched_journals, "data/matched_journals.rds")
 saveRDS(missing_dois,"data/missing_from_journal_matching.rds")
 ```

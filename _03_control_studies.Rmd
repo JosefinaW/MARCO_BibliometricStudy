@@ -25,8 +25,9 @@ source("R/data_prep.R")
 
 #data loading
 ```{r}
-matched_journals <- readRDS("data/matched_journals_pilot.rds")
+matched_journals <- readRDS("data/matched_journals.rds")
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
+missing_dois <- readRDS("data/missing_from_journal_matching.rds")
 ```
 
 # getting control studies
@@ -50,10 +51,9 @@ range(get_matches$year)
 str(get_matches)
 ```
 
-# query oa_fetch in batches
+# query oa_fetch in batches to get articles published in those journals based on issn and year
 ```{r}
-email <- Sys.getenv("MY_EMAIL")
-options(openalexR.mailto = email)
+options(openalexR.apikey = Sys.getenv("OA_API_KEY"))
 
 # assumes get_matches has columns: issn (e.g., "1234-5678") and year (integer)
 fetch_issn_year <- purrr::slowly(
@@ -157,37 +157,70 @@ out_miss <- purrr::map(results_miss, ~ .x$result) %>%
   dplyr::distinct(id, .keep_all = TRUE) %>%
   dplyr::rename(title = display_name)
 
-matched_articles <- dplyr::select(matched_articles, -license)
+#matched_articles <- dplyr::select(matched_articles, -license)
 all_matched_articles <- rbind(matched_articles, out_miss)
 all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
-
-miss_doi <- setdiff(df_meta$doi_o, all_matched_articles$doi)
+```
+#some journals are not in sjr - will query studies in them instead via source_id from OpenAlex and year
+```{r}
 
 get2 <- df_meta %>%
-  filter(doi_o %in% miss_doi) %>%
-  select(publication_year, issn_l)
+  filter(doi_o %in% missing_dois) %>%
+  select(publication_year, issn_l, source_id, doi_o)
 get2 <- unique(get2)
+get2 %>% filter(is.na(source_id))
+# out_miss2 <- cached_oa_fetch(
+#   entity = "works",
+#   `primary_location.source.issn` = get2$source_display_name, # Nature's ISSN-L (example)
+#   publication_year = get2$publication_year,
+#   type = "article",
+#   options = list(
+#     select = c("id", "doi", "display_name", "publication_year", "primary_location")
+#   ),
+#   cache_key = list(stage = "missing_original_articles"),
+#   verbose = TRUE
+# )
 
-out_miss2 <- cached_oa_fetch(
-  entity = "works",
-  `primary_location.source.issn` = get2$issn_l, # Nature's ISSN-L (example)
-  publication_year = get2$publication_year,
-  type = "article",
-  options = list(
-    select = c("id", "doi", "display_name", "publication_year", "primary_location")
-  ),
-  cache_key = list(stage = "missing_original_articles"),
-  verbose = TRUE
+fetch_missing2 <- purrr::slowly(
+  purrr::safely(function(source_id, year) {
+    message(sprintf("journal=%s, year=%s", source_id, year))
+    cached_oa_fetch(
+      entity = "works",
+      `primary_location.source.id` = source_id,
+      publication_year = year,
+      type = "article",
+      options = list(select = c("id", "doi", "display_name", "publication_year", "primary_location")),
+      cache_key = list(stage = "missing_journal_articles_byname"),
+      verbose = TRUE
+    )
+  }),
+  rate = purrr::rate_delay(0.2)
 )
 
-out_miss2 <- out_miss2 %>% rename(title = display_name)
-out_miss2 <- dplyr::select(out_miss2, -license)
+results_miss2 <- purrr::map2(
+  get2$source_id, get2$publication_year,
+  fetch_missing2,
+  .progress = TRUE
+)
+
+out_miss2 <- purrr::map(results_miss2, ~ .x$result) %>%
+  purrr::keep(~ is.data.frame(.x) && nrow(.x) > 0) %>%
+  dplyr::bind_rows() %>%
+  dplyr::distinct(id, .keep_all = TRUE) %>%
+  dplyr::rename(title = display_name)
+
+
+#out_miss2 <- out_miss2 %>% rename(title = display_name)
+#out_miss2 <- dplyr::select(out_miss2, -license)
 all_matched_articles <- rbind(all_matched_articles, out_miss2)
 all_matched_articles <- all_matched_articles %>% mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 
 setdiff(df_meta$doi_o, all_matched_articles$doi)
+
 ```
+
 #save ouput
 ```{r}
 saveRDS(all_matched_articles, "data/all_matched_articles.rds")
+saveRDS(get2, "data/missing_from_matched_journals.rds")
 ```

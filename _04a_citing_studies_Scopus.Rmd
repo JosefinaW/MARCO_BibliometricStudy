@@ -61,6 +61,27 @@ dois <- cfg$dois %>%
 
 message("Citation type: ", citation_type)
 message("Unique DOIs to query: ", length(dois))
+
+
+# check which are already done
+if (file.exists(cfg$log_csv)) {
+  log_df    <- read.csv(cfg$log_csv, stringsAsFactors = FALSE)
+  done_ok   <- unique(log_df$doi[log_df$status == "ok"])
+  done_fail <- unique(log_df$doi[log_df$status == "error"])
+  to_query  <- setdiff(dois, done_ok)
+  message("Already collected: ", length(done_ok))
+  message("Failed attempts:   ", length(done_fail))
+  message("Still to query:    ", length(to_query))
+} else {
+  message("No log found — all ", length(dois), " DOIs will be queried")
+}
+
+never_attempted <- setdiff(dois, union(done_ok, done_fail))
+message("Never attempted:   ", length(never_attempted))
+message("Retrying failed:   ", length(intersect(dois, done_fail)))
+
+
+
 ```
 #run the scopus citation pipeline
 

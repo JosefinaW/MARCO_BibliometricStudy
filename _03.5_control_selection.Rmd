@@ -30,6 +30,7 @@ all_matched_articles <- readRDS("data/all_matched_articles.rds")
 matched_journals <- readRDS("data/matched_journals.rds")
 df_journals <- sjr_journals
 df_meta <- readRDS("data/metadata_OpenAlex.rds")
+missing_from_matched_journals <- readRDS("data/missing_from_matched_journals.rds")
 ```
 
 # which articles match to which originals
@@ -57,10 +58,17 @@ combination <- merge(all_matched_articles, matched_journals,
   sort = FALSE
 )
 
-combination <- combination %>%
-  dplyr::select(issn_l, publication_year, doi, doi_o, sjr_diff)
+combination <- merge(combination, missing_from_matched_journals, by.x = c("source_id", "publication_year"), by.y = c("source_id", "publication_year"), suffixes = c("","_k"),all.x=TRUE,
+sort = FALSE)
 
-combination %>% filter(is.na(doi_o))
+# fill doi_o NAs with doi_o from get2
+combination <- combination %>%
+  mutate(doi_o = coalesce(doi_o, doi_o_k)) %>%
+  select(-doi_o_k)
+
+combination <- combination %>%
+  dplyr::select(issn_l, publication_year, doi, doi_o, sjr_diff, source_id)
+combination %>% filter(!is.na(doi_o))
 
 
 df_journals
@@ -88,11 +96,28 @@ combination <- combination %>%
     doi = tolower(trimws(doi))
   )
 head(combination)
+# -------
+# load existing matches to skip already-matched treated DOIs
+existing_full_matched_df <- if (file.exists("data/full_matched_df.rds")) {
+  readRDS("data/full_matched_df.rds") %>%
+    mutate(across(c(doi, doi_o, treated_doi_queried), ~ tolower(trimws(.x))))
+} else {
+  NULL
+}
+
+already_matched_treated <- if (!is.null(existing_full_matched_df))
+  unique(existing_full_matched_df$treated_doi_queried) else character(0)
+
+already_used_dois <- if (!is.null(existing_full_matched_df))
+  unique(existing_full_matched_df$doi) else character(0)
+
 # get treated/control
+treated_dois_all <- sample(unique(combination$doi_o))  # full shuffled list (respects seed)
+treated_dois     <- setdiff(treated_dois_all, already_matched_treated)  # only unmatched
+control_studies  <- setdiff(unique(combination$doi), treated_dois_all)
 
-treated_dois <- sample(unique(combination$doi_o))
-control_studies <- setdiff(unique(combination$doi), treated_dois)
-
+message(sprintf("Already matched: %d | Remaining: %d", length(already_matched_treated), length(treated_dois)))
+# --------
 # scan combination ONCE to get only candidate rows we could ever use
 cand <- combination %>%
   filter(
@@ -108,8 +133,9 @@ cand <- cand %>%
 
 cand_split <- split(cand, cand$doi_o)
 
-# O(1) membership test, no growing vector copies
+# O(1) membership test — pre-populate with already-used DOIs
 used <- new.env(hash = TRUE, parent = emptyenv())
+for (x in already_used_dois) used[[x]] <- TRUE
 
 matched_list <- vector("list", length(treated_dois))
 names(matched_list) <- treated_dois
@@ -119,7 +145,7 @@ for (i in seq_along(treated_dois)) {
   df <- cand_split[[tid]]
   if (is.null(df) || nrow(df) == 0) next
 
-  u <- unique(df$doi) # already ordered by arrange()
+  u <- unique(df$doi)
   keep <- u[!vapply(u, exists, logical(1), envir = used)]
   sel <- head(keep, n_controls)
 
@@ -131,51 +157,51 @@ for (i in seq_along(treated_dois)) {
 
 matched_analysis_df <- bind_rows(matched_list)
 
-# Inspect
-head(matched_analysis_df)
-
-# 1) Treated rows that already exist (self-match present)
+# 1) Treated rows that already exist (self-match present) — only for new treated DOIs
 treated_rows_exist <- combination %>%
-  filter(doi == doi_o) %>%
+  filter(doi == doi_o, doi_o %in% treated_dois) %>%
   group_by(doi_o) %>%
   slice_min(abs(sjr_diff), n = 1, with_ties = FALSE) %>%
   ungroup() %>%
   mutate(treated_doi_queried = doi_o)
 
-# 2) Identify treated DOIs missing a self-match row
-missing_treated <- setdiff(unique(combination$doi_o), unique(treated_rows_exist$doi_o))
+# 2) Identify new treated DOIs missing a self-match row
+missing_treated <- setdiff(treated_dois, unique(treated_rows_exist$doi_o))
 
 # 3) Create a synthetic treated row for each missing doi_o
 treated_rows_missing <- combination %>%
   filter(doi_o %in% missing_treated) %>%
   group_by(doi_o) %>%
-  slice(1) %>% # grabs publication_year (and issn_l) from existing rows for that doi_o
+  slice(1) %>%
   ungroup() %>%
   transmute(
     issn_l = issn_l,
     publication_year = publication_year,
-    doi = doi_o, # <- make treated row
+    doi = doi_o,
     doi_o = doi_o,
-    sjr_diff = 0, # or NA_real_ if you prefer
+    sjr_diff = 0,
     treated_doi_queried = doi_o
   )
 
-# 4) Final treated_rows = real self-matches + patched rows
+# 4) Final treated_rows for new studies
 treated_rows <- bind_rows(treated_rows_exist, treated_rows_missing)
 
-# combine treated + matched controls
-full_matched_df <- bind_rows(treated_rows, matched_analysis_df)
-colnames(full_matched_df)
-full_matched_df <- full_matched_df %>%
+# combine new matches with existing
+new_matched_df <- bind_rows(treated_rows, matched_analysis_df)
+full_matched_df <- bind_rows(existing_full_matched_df, new_matched_df) %>%
   distinct(doi, publication_year, .keep_all = TRUE)
-# check number of studies for each treated doi
+
+colnames(full_matched_df)
 full_matched_df %>%
   dplyr::group_by(treated_doi_queried) %>%
-  summarise(n_unique = n_distinct(doi), .groups = "drop") 
+  summarise(n_unique = n_distinct(doi), .groups = "drop")
 
 head(full_matched_df)
 length(unique(full_matched_df$doi_o))
 length(unique(full_matched_df$doi))
+
+missing_dois <- setdiff(df_meta$doi_o, full_matched_df$treated_doi_queried)
+combination %>% filter(doi_o %in% missing_dois) %>% View()
 
 ```
 
