@@ -129,12 +129,12 @@ mods <- mods %>%
 #subject field of original
 - load field classification from the abstract.rds
 ```{r}
-subject <- read_csv("field_classification/classified_articles_pilot.csv")
-
+subject <- read_csv("field_classification/classified_abstracts.csv")
+head(subject)
 # Combine all field/cluster assignments into one long format to count
 all_assignments <- c(
   subject$field_id, # or primary_cluster_id if no field
-  subject$secondary_field_id # or secondary_cluster_id if no field
+  subject$secondary_cluster_id # or secondary_cluster_id if no field
 )
 
 # Count occurrences of each field label
@@ -158,9 +158,9 @@ subject$primary_final <- recode_field(
   rare_fields,
   subject$cluster_id
 )
-
+#no secondary_field_id in the data
 subject$secondary_final <- recode_field(
-  subject$secondary_field_id,
+  subject$secondary_cluster_id,
   rare_fields,
   subject$secondary_cluster_id
 )
@@ -200,6 +200,7 @@ if (length(rare_subj_cols) > 0) {
 } else {
   subject$subj_other <- 0L
 }
+subj_cols <- grep("^subj_", colnames(subject), value = TRUE)
 
 # Normalise each row so that the subj_ values sum to 1 per study
 subject <- subject %>%
@@ -211,7 +212,7 @@ subject <- subject %>%
   ungroup()
 
 subject <- subject %>% rename(doi_o = doi)
-
+View(subject)
 
 mods <- mods %>%
   left_join(
@@ -244,7 +245,7 @@ dois_to_query <- mods$doi_r[
         mods$doi_r %in% oa_unpaywall$doi[is.na(oa_unpaywall$is_oa)]
     )
 ]
-
+dois_to_query <- unique(dois_to_query)
 # Step 2: Query Unpaywall only for missing/incomplete DOIs
 if (length(dois_to_query) > 0) {
   new_results <- oadoi_fetch(dois = dois_to_query, email = email) %>%
@@ -259,6 +260,36 @@ if (length(dois_to_query) > 0) {
 } else {
   message("All DOIs already cached — no API calls needed.")
 }
+
+#safely option
+safe_oadoi <- purrr::safely(oadoi_fetch)
+
+new_results <- purrr::map_dfr(dois_to_query, function(d) {
+  Sys.sleep(0.1)
+  out <- safe_oadoi(dois = d, email = email)
+  if (!is.null(out$result)) {
+    message("OK: ", d)
+    out$result %>%
+      select(doi, is_oa, oa_status, best_oa_location) %>%
+      mutate(best_oa_location = sapply(best_oa_location, function(x) {
+        if (is.null(x) || length(x) == 0) NA_character_
+        else jsonlite::toJSON(x, auto_unbox = TRUE)
+      }))
+  } else {
+    message("MISS: ", d)
+    tibble(doi = d, is_oa = NA, oa_status = NA_character_, best_oa_location = NA_character_)
+  }
+})
+
+  # Merge with existing cache
+oa_unpaywall <- oa_unpaywall %>%
+  filter(!doi %in% new_results$doi) %>%
+  bind_rows(new_results)
+saveRDS(oa_unpaywall, "oa_unpaywall.rds")   
+## testing:
+#httr::GET(
+# paste0("https://api.unpaywall.org/v2/10.1126/science.aac4716?email=", email)
+#) %>% httr::content("text")
 
 # Step 3: Join to mods (left join so unmatched oa_unpaywall rows are dropped)
 mods <- mods %>%
@@ -280,6 +311,8 @@ author of the original study. The h-index is computed year-by-year using
 Scopus: for a given target year, we identify all papers published by
 the author up to that year and count citations each paper received up
 to that year.
+
+To do: modify so that publications fetched only up to 21 as that is the year of publication of last replication so no original could have been publsiehd after - to shorten the time
 
 ```{r seniority-helpers}
 Skey <- Sys.getenv("SCOPUS_API_KEY")
@@ -1144,7 +1177,15 @@ mods <- mods %>%
       select(doi_r, year, seniority = all_of(seniority_col)),
     by = c("doi_r" = "doi_r", "publication_year_r" = "year")
   )
+mods$seniority
+
+
+
+
+View(seniority)
 ```
+
+
 
 #author overlap
 - for Scopus track do it through scopus, for OC track through OpenAlex
@@ -1448,14 +1489,22 @@ mods <- mods %>%
 table(mods$publication_strategy)
 ```
 #join the model 
+
 ```{r}
 # add all the newly created moderators
 mods <- unique(mods)
 eff_long <- eff_long %>%
   left_join(mods, by = c("doi_o"))
 
-eff_long %>% arrange(doi_o)
-
+eff_long %>% arrange(doi_o) %>% View()
+saveRDS(eff_long, paste0("data/eff_long_", data_source, "_", data_outcome, ".rds"))
+```
+#can load data pre-analysis
+```{r}
+#eff_long <- readRDS(paste0("data/eff_long_", data_source, "_", data_outcome, ".rds"))
+```
+```{r}
+# primary analysis - only include timepoints 2-6 years after publication of replication
 primary <- eff_long %>% filter(time >= (publication_year_r + 2) & time <= (publication_year_r + 6))
 
 primary %>% arrange(doi_o)
@@ -1465,6 +1514,8 @@ primary %>% arrange(doi_o)
 primary$age_r <- primary$time - primary$publication_year_r
 primary$age_r_sq <- (primary$age_r)^2
 table(primary$age_r)
+
+
 ```
 #modifying the SNIP to account for missingness
 ```{r}
@@ -1479,7 +1530,50 @@ table(primary$snip_missing)
 #regression
 
 ```{r}
+#checks
 str(primary)
+primary %>%
+  group_by(doi_o) %>%
+  summarise(across(everything(), ~ all(is.na(.x))), .groups = "drop") %>%
+  summarise(across(-doi_o, sum)) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "n_units_missing") %>%
+  arrange(desc(n_units_missing)) %>%
+  print(n = Inf)
+N <- n_distinct(primary$doi_o)
+#percentage of units with all missing values for each column
+primary %>%
+  group_by(doi_o) %>%
+  summarise(across(everything(),
+                   list(any = ~ any(is.na(.x)),
+                        all = ~ all(is.na(.x))),
+                   .names = "{.col}__{.fn}"),
+            .groups = "drop") %>%
+  summarise(across(-doi_o, sum)) %>%
+  pivot_longer(everything(), names_to = c("column", "type"), names_sep = "__") %>%
+  pivot_wider(names_from = type, values_from = value) %>%
+  mutate(pct_all_na = round(100 * all / N, 1)) %>%
+  arrange(desc(all), desc(any)) %>%
+  print(n = Inf)
+```
+```{r}
+#missingness indicators for is.oa
+primary <- primary %>%
+  mutate(
+    same_journal_f = coalesce(as.integer(same_journal), 0L),
+    is_oa_missing  = as.integer(is.na(is_oa)),
+    is_oa_f        = coalesce(as.integer(is_oa), 0L)
+  )
+
+
+primary <- primary %>%
+  mutate(
+    has_overlap_f  = as.integer(as.logical(has_overlap)),
+    pub_preprint   = as.integer(publication_strategy == "preprint"),
+    pub_meta       = as.integer(publication_strategy == "meta"),
+    snip_missing_f = as.integer(as.logical(snip_missing))
+    # published omitted = reference
+  )
+
 primary <- primary %>%
   mutate(across(
     (where(is.logical) | where(is.character)) & !starts_with("doi"),
@@ -1490,12 +1584,17 @@ primary <- primary %>%
 subj_vars <- paste(grep("^subj_", colnames(primary), value = TRUE), collapse = " + ")
 
 # Build formula dynamically and add -1 to remove reference group
+#formula <- as.formula(paste(
+#  "~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered +
+#   snip_missing + is_oa + seniority + same_journal +",
+#  subj_vars, "- 1"
+#))
 formula <- as.formula(paste(
-  "~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered +
-   snip_missing + is_oa + seniority + same_journal +",
+  "~ age_r + age_r_sq + has_overlap_f + pub_preprint + pub_meta +
+     SNIP_centered + snip_missing_f + is_oa_f + is_oa_missing + same_journal_f +",
   subj_vars, "- 1"
 ))
-
+#
 # model
 reg_model <- rma.mv(
   yi = att, V = sampling_var,
@@ -1505,7 +1604,7 @@ reg_model <- rma.mv(
 )
 
 summary(reg_model)
-reg_model$sigma2[2]
+reg_model$sigma2
 
 # residuals / QQ
 z <- rstandard(reg_model)$z
