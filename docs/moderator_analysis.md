@@ -16,7 +16,7 @@ first stage; a random intercept per original absorbs within-paper dependence.
 | Originals | 591 |
 | Original-by-year observations | 2,690 (one row per original and year) |
 | Response | first-stage estimated yearly citation difference from the counterfactual, in citations per year |
-| Covariates | years since replication and its square; field shares (no intercept); author overlap; same journal; journal SNIP with missing indicator; missing-journal indicator; multi-original replication (more than three originals per replication DOI) |
+| Covariates | years since replication and its square; years between original and replication publication; field shares (no intercept); author overlap; same journal; journal SNIP with missing indicator; missing-journal indicator; multi-original replication (more than three originals per replication DOI) |
 | Publication and access | four joint categories: journal article with publisher OA; journal article without publisher OA (reference); preprint or working paper; other online deposit; plus a nuisance group of 11 other publisher outputs |
 | Access definition | Unpaywall status gold, hybrid or bronze counts as publisher OA; green (repository-only) and closed do not; five articles without cached status carry source-audited values |
 | Intervals | CR2 cluster-robust by original with Satterthwaite degrees of freedom, reported next to model-based intervals |
@@ -25,13 +25,14 @@ Results (differences in citations per original per year; positive means a smalle
 
 | Contrast | Difference | 95% CR2 interval | p |
 |---|---:|---:|---:|
-| Publisher-OA article vs no publisher OA | −0.13 | [−4.64, 4.38] | .95 |
-| Preprint or working paper vs no publisher OA | 4.95 | [−7.61, 17.51] | .42 |
-| Online deposit vs no publisher OA | 6.40 | [−7.88, 20.67] | .36 |
-| Shared author vs none | 0.25 | [−4.80, 5.30] | .92 |
-| Same journal vs different | 0.58 | [−4.88, 6.04] | .83 |
-| SNIP, per one-point increase | −0.46 | [−1.78, 0.87] | .49 |
-| Multi-original replication | 3.33 | [−4.14, 10.81] | .37 |
+| Publisher-OA article vs no publisher OA | −0.38 | [−4.90, 4.13] | .87 |
+| Preprint or working paper vs no publisher OA | 4.53 | [−7.93, 16.99] | .45 |
+| Online deposit vs no publisher OA | 6.14 | [−8.01, 20.30] | .38 |
+| Shared author vs none | −0.15 | [−5.18, 4.89] | .95 |
+| Same journal vs different | 0.34 | [−5.14, 5.82] | .90 |
+| SNIP, per one-point increase | −0.51 | [−1.84, 0.82] | .45 |
+| Publication gap, per year between original and replication | −0.16 | [−0.36, 0.05] | .12 |
+| Multi-original replication | 3.00 | [−4.40, 10.41] | .42 |
 
 The years-since-replication terms are read jointly: year 6 versus year 2 is
 about +0.7 citations per year, CR2 SE 0.30. Between-original standard deviation

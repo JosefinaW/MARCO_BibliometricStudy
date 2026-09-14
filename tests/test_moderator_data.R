@@ -13,6 +13,8 @@ x$SNIP[2]<-3
 stopifnot(inherits(try(collapse_moderator_rows(x,c('doi_o','time')),silent=TRUE),'try-error'))
 e<-readRDS('data/eff_long_Scopus_citation.rds');d<-prepare_moderator_primary(e)
 stopifnot(nrow(d)==2690,n_distinct(d$doi_o)==591,!anyDuplicated(d[c('doi_o','time')]),
+ is.integer(d$gap_years),all(d$gap_years>=2L),!anyNA(d$gap_years),
+ all(tapply(d$gap_years,d$doi_o,function(x) length(unique(x)))==1L),
  all(d$same_journal_f[d$same_journal==0 & !is.na(d$same_journal)]==0),
  all(d$is_oa_f[d$is_oa==1 & !is.na(d$is_oa)]==1))
 # Repeated execution and factor input must not change model coding.
@@ -73,7 +75,9 @@ fixture$issn_l_r <- rep('1234-5678',5)
 fixture$publication_strategy <- c('published','preprint','published','published','meta')
 fixture$is_oa <- c(TRUE,NA,FALSE,NA,NA)
 fixture$time <- fixture$publication_year_r+2
-z <- prepare_moderator_publication_form(fixture)
+fixture_years <- data.frame(doi_o=fixture$doi_o,year_o=fixture$publication_year_r-3L)
+z <- prepare_moderator_publication_form(fixture,fixture_years)
+stopifnot(all(z$gap_years==3L))
 stopifnot(identical(z$publication_form,c('journal_article','preprint_repository',
  'journal_article','journal_article','unidentified')),
  identical(z$oa_journal_eligible,c(TRUE,FALSE,TRUE,FALSE,FALSE)))
@@ -110,12 +114,12 @@ stopifnot(all(table(cp$publication_access_group)[names(expected_group)]==expecte
 cm <- model.matrix(moderator_combined_formula(cmb),cmb)
 stopifnot(qr(cm)$rank==ncol(cm),!anyNA(cm),
  !any(c('is_oa_f','is_oa_missing','pub_preprint','pub_meta') %in% colnames(cm)))
-cz <- prepare_moderator_combined(fixture)
+cz <- prepare_moderator_combined(fixture,original_years=fixture_years)
 stopifnot(identical(cz$publication_access_group,c('article_oa','online_deposit',
  'article_closed','article_access_unknown','doi_unavailable')))
 # Namespace alone cannot create preprint, but explicit type can.
 fixture$type_r[2] <- 'preprint'
-stopifnot(prepare_moderator_combined(fixture)$publication_access_group[2]=='preprint')
+stopifnot(prepare_moderator_combined(fixture,original_years=fixture_years)$publication_access_group[2]=='preprint')
 cat('Combined publication/access categories and full-rank design tests passed\n')
 
 # Publisher access excludes repository-only green OA, includes hybrid and bronze,

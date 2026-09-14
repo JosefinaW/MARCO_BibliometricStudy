@@ -1,9 +1,10 @@
 Rows: 1632
 Originals: 355
-Between-paper SD: 16.8818685029781
-~age_r + age_r_sq + has_overlap_f + SNIP_centered + snip_missing_f + 
-    same_journal_f + is_oa_f + subj_cognitive_psychology + subj_developmental_psychology + 
-    subj_social_psychology + subj_psychology_other + subj_biological_neuropsychology + 
+Between-paper SD: 16.909603336854
+~age_r + age_r_sq + gap_years + has_overlap_f + SNIP_centered + 
+    snip_missing_f + same_journal_f + is_oa_f + subj_cognitive_psychology + 
+    subj_developmental_psychology + subj_social_psychology + 
+    subj_psychology_other + subj_biological_neuropsychology + 
     subj_clinical_psychology + subj_differential_personality_diagnostics + 
     subj_human_medicine + subj_sociology_social_sciences + subj_health_sciences_general + 
     subj_biology + subj_education + subj_political_science + 

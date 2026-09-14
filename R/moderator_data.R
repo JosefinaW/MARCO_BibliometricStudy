@@ -78,10 +78,21 @@ moderator_binary <- function(x) {
   ifelse(is.na(y), NA_integer_, as.integer(y %in% c('TRUE','1')))
 }
 
-prepare_moderator_primary <- function(eff_long) {
+# Publication year of each original, from the FLoRA record in the OpenAlex cache.
+moderator_original_years <- function(meta = readRDS('data/metadata_OpenAlex.rds')) {
+  years <- data.frame(doi_o = normalise_moderator_doi(meta$doi_o),
+    year_o = as.integer(meta$year_o)) |> dplyr::distinct()
+  stopifnot(!anyNA(years$year_o), !anyDuplicated(years$doi_o))
+  years
+}
+
+prepare_moderator_primary <- function(eff_long, original_years = moderator_original_years()) {
   clean <- collapse_moderator_rows(eff_long, c('doi_o','time'))
   stopifnot(!anyDuplicated(clean[c('doi_o','time')]))
+  year_o <- original_years$year_o[match(normalise_moderator_doi(clean$doi_o), original_years$doi_o)]
+  stopifnot(!anyNA(year_o))
   primary <- clean |>
+    dplyr::mutate(gap_years = as.integer(publication_year_r - year_o)) |>
     dplyr::filter(time >= publication_year_r + 2, time <= publication_year_r + 6) |>
     dplyr::mutate(
       age_r = time - publication_year_r, age_r_sq = age_r^2,
@@ -97,14 +108,15 @@ prepare_moderator_primary <- function(eff_long) {
       snip_missing_f = as.integer(snip_missing)
     )
   stopifnot(all(is.finite(primary$sampling_var)),all(primary$sampling_var>0),
-    all(primary$age_r %in% 2:6),!anyDuplicated(primary[c('doi_o','time')]))
+    all(primary$age_r %in% 2:6),!anyDuplicated(primary[c('doi_o','time')]),
+    all(primary$gap_years >= 0))
   primary
 }
 
 # Publication form and access answer different questions. Never infer access
 # from form or treat failed/missing OA metadata as a closed-access observation.
-prepare_moderator_publication_form <- function(eff_long) {
-  d <- prepare_moderator_primary(eff_long)
+prepare_moderator_publication_form <- function(eff_long, original_years = moderator_original_years()) {
+  d <- prepare_moderator_primary(eff_long, original_years)
   doi <- normalise_moderator_doi(d$doi_r)
   type <- as.character(d$type_r)
   # These three repository namespaces explain every non-preprint-typed record
@@ -142,7 +154,7 @@ moderator_publication_formula <- function(data, oa_journal = FALSE, metadata_cov
   subject <- subject[vapply(data[subject], function(x) any(x != 0), logical(1))]
   form <- if (oa_journal) 'is_oa_f' else paste0('form_',
     c('preprint_repository','multi_original_article','other_output','unidentified'))
-  controls <- c('age_r','age_r_sq','has_overlap_f','SNIP_centered',
+  controls <- c('age_r','age_r_sq','gap_years','has_overlap_f','SNIP_centered',
     'snip_missing_f','same_journal_f','same_journal_missing')
   controls <- controls[vapply(data[controls], function(x) length(unique(x)) > 1L, logical(1))]
   if (metadata_coverage && oa_journal)
@@ -154,8 +166,9 @@ moderator_publication_formula <- function(data, oa_journal = FALSE, metadata_cov
 # User-facing joint classification: article access is nested within journal
 # outputs; preprint metadata is distinguished from a repository DOI alone.
 prepare_moderator_combined <- function(eff_long,
-    overrides = utils::read.csv('data/moderator_publication_overrides.csv')) {
-  d <- prepare_moderator_publication_form(eff_long)
+    overrides = utils::read.csv('data/moderator_publication_overrides.csv'),
+    original_years = moderator_original_years()) {
+  d <- prepare_moderator_publication_form(eff_long, original_years)
   doi <- normalise_moderator_doi(d$doi_r)
   override_doi <- normalise_moderator_doi(overrides$doi)
   stopifnot(!anyNA(override_doi),!anyDuplicated(override_doi),
@@ -196,7 +209,7 @@ prepare_moderator_combined <- function(eff_long,
 moderator_combined_formula <- function(data) {
   subject <- grep('^subj_',names(data),value=TRUE)
   subject <- subject[vapply(data[subject],function(x) any(x!=0),logical(1))]
-  stats::reformulate(c('age_r','age_r_sq','has_overlap_f','SNIP_centered',
+  stats::reformulate(c('age_r','age_r_sq','gap_years','has_overlap_f','SNIP_centered',
     'snip_missing_f','same_journal_f','same_journal_missing','multi_original_f',
     paste0('group_',c('article_oa','preprint','online_deposit',
       'article_access_unknown','other_unclassified','doi_unavailable')),subject),
@@ -212,8 +225,9 @@ moderator_publisher_oa <- function(oa_status) {
 }
 
 prepare_moderator_publisher <- function(eff_long,
-    trace = utils::read.csv('data/moderator_publisher_trace_overrides.csv')) {
-  d <- prepare_moderator_combined(eff_long)
+    trace = utils::read.csv('data/moderator_publisher_trace_overrides.csv'),
+    original_years = moderator_original_years()) {
+  d <- prepare_moderator_combined(eff_long, original_years = original_years)
   stopifnot(!anyNA(trace$doi_o),!anyDuplicated(trace$doi_o),
     all(trace$verified_form %in% c('article','preprint','online_deposit','other_publisher_output')))
   ix <- match(d$doi_o,trace$doi_o)
@@ -257,18 +271,19 @@ prepare_moderator_publisher <- function(eff_long,
 moderator_publisher_formula <- function(data) {
   subject <- grep('^subj_',names(data),value=TRUE)
   subject <- subject[vapply(data[subject],function(x) any(x!=0),logical(1))]
-  stats::reformulate(c('age_r','age_r_sq','has_overlap_f','SNIP_centered',
+  stats::reformulate(c('age_r','age_r_sq','gap_years','has_overlap_f','SNIP_centered',
     'snip_missing_f','same_journal_f','same_journal_missing','multi_original_f',
     paste0('publisher_group_',c('article_oa','preprint','online_deposit','other_publisher_output')),
     subject),intercept=FALSE)
 }
 
 # Preregistered additive specification: publication strategy and any-copy access
-# enter as separate terms, each with its own missingness indicator.
+# enter as separate terms, each with its own missingness indicator; the gap in
+# years between original and replication is the preregistered time-lag moderator.
 moderator_primary_formula <- function(data) {
   subject <- grep('^subj_',names(data),value=TRUE)
   subject <- subject[vapply(data[subject],function(x) any(x!=0),logical(1))]
-  stats::reformulate(c('age_r','age_r_sq','has_overlap_f','pub_preprint','pub_meta',
+  stats::reformulate(c('age_r','age_r_sq','gap_years','has_overlap_f','pub_preprint','pub_meta',
     'SNIP_centered','snip_missing_f','is_oa_f','is_oa_missing','same_journal_f',
     'same_journal_missing',subject),intercept=FALSE)
 }
