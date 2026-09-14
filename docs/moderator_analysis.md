@@ -9,37 +9,42 @@ specification was reached; this file states what is current.
 Multilevel meta-regression (`metafor::rma.mv`, REML) of the first-stage FECT
 effect for each original paper and year, two to six years after the replication.
 Weights are the inverse of the per-cell bootstrap sampling variance from the
-first stage; a random intercept per original absorbs within-paper dependence.
+first stage. Random intercepts for the replication publication and for the
+original within it absorb dependence at both levels: originals tested in the
+same replication share its authors, venue, access status and publication date.
 
 | Quantity | Value |
 |---|---|
 | Originals | 591 |
+| Replication publications | 511 (six test more than three originals each; 69 originals) |
 | Original-by-year observations | 2,690 (one row per original and year) |
 | Response | first-stage estimated yearly citation difference from the counterfactual, in citations per year |
 | Covariates | years since replication and its square; years between original and replication publication; field shares (no intercept); author overlap; same journal; journal SNIP with missing indicator; missing-journal indicator; multi-original replication (more than three originals per replication DOI) |
 | Publication and access | four joint categories: journal article with publisher OA; journal article without publisher OA (reference); preprint or working paper; other online deposit; plus a nuisance group of 11 other publisher outputs |
 | Access definition | Unpaywall status gold, hybrid or bronze counts as publisher OA; green (repository-only) and closed do not; five articles without cached status carry source-audited values |
-| Intervals | CR2 cluster-robust by original with Satterthwaite degrees of freedom, reported next to model-based intervals |
+| Random effects | `~1 | replication_id/doi_o`; the cluster id is the recovered or cached replication DOI, and each original without one is its own cluster |
+| Intervals | CR2 cluster-robust by replication with Satterthwaite degrees of freedom, reported next to model-based intervals |
 
 Results (differences in citations per original per year; positive means a smaller citation loss):
 
 | Contrast | Difference | 95% CR2 interval | p |
 |---|---:|---:|---:|
-| Publisher-OA article vs no publisher OA | −0.38 | [−4.90, 4.13] | .87 |
-| Preprint or working paper vs no publisher OA | 4.53 | [−7.93, 16.99] | .45 |
-| Online deposit vs no publisher OA | 6.14 | [−8.01, 20.30] | .38 |
-| Shared author vs none | −0.15 | [−5.18, 4.89] | .95 |
-| Same journal vs different | 0.34 | [−5.14, 5.82] | .90 |
-| SNIP, per one-point increase | −0.51 | [−1.84, 0.82] | .45 |
-| Publication gap, per year between original and replication | −0.16 | [−0.36, 0.05] | .12 |
-| Multi-original replication | 3.00 | [−4.40, 10.41] | .42 |
+| Publisher-OA article vs no publisher OA | −0.30 | [−5.10, 4.50] | .90 |
+| Preprint or working paper vs no publisher OA | 3.57 | [−9.70, 16.85] | .58 |
+| Online deposit vs no publisher OA | 3.06 | [−11.25, 17.36] | .66 |
+| Shared author vs none | −2.76 | [−7.74, 2.21] | .26 |
+| Same journal vs different | 3.00 | [−2.17, 8.18] | .25 |
+| SNIP, per one-point increase | −2.27 | [−4.70, 0.16] | .07 |
+| Publication gap, per year between original and replication | −0.13 | [−0.30, 0.04] | .14 |
+| Multi-original replication | 4.22 | [−9.37, 17.81] | .48 |
 
 The years-since-replication terms are read jointly: year 6 versus year 2 is
-about +0.7 citations per year, CR2 SE 0.30. Between-original standard deviation
-is about 22 citations per year. No contrast in the table above is
-distinguishable from zero; the intervals are too wide to claim equivalence.
-Full account, including the 22 source-audited records and the protocol
-deviations: `moderator_publisher_access_audit_2026-09-08.md`.
+about +0.7 citations per year. Between-replication standard deviation is about
+20 citations per year and between-original within replication about 10. No
+contrast in the table above is distinguishable from zero; the intervals are too
+wide to claim equivalence. Coding and source audit:
+`moderator_publisher_access_audit_2026-09-08.md`; the replication level and its
+effect on the estimates: `moderator_three_level_2026-09-14.md`.
 
 ## Deviations from the preregistration
 
@@ -66,9 +71,11 @@ Each answers a narrower question. Outputs carry the suffix in the file names.
 | `oa_within_journal` | Any-copy OA among the 355 ordinary journal articles with observed status | same note |
 | `metadata_coverage` | Whether missing Unpaywall status (81 originals with a DOI) is associated with the effect | same note |
 | `publication_access` | Joint categories with any-copy access | `moderator_combined_publication_access_2026-09-08.md` |
-| `publisher_access` | **Primary model above** | `moderator_publisher_access_audit_2026-09-08.md` |
+| `publisher_access` | Primary fixed effects with a random intercept per original only, CR2 by original | `moderator_publisher_access_audit_2026-09-08.md` |
+| `publisher_access_threelevel` | **Primary model above** | `moderator_three_level_2026-09-14.md` |
 
-`R/refit_moderators_corrected.R` produces the `corrected` model.
+All sensitivity models use a random intercept per original and CR2 intervals
+clustered by original. `R/refit_moderators_corrected.R` produces the `corrected` model.
 `R/refit_moderators.R` produces the `publication_form`, `oa_within_journal` and
 `metadata_coverage` models.
 
@@ -124,6 +131,7 @@ Rscript R/rebuild_stage2_variances.R <path to fect fit with keep.sims = TRUE>
 Rscript tests/test_moderator_data.R
 Rscript tests/test_bootstrap_variance.R
 Rscript R/refit_moderators_corrected.R
+Rscript R/refit_moderators_publisher_threelevel.R
 Rscript R/refit_moderators_publisher.R
 Rscript R/refit_moderators_combined.R
 Rscript R/refit_moderators.R
@@ -147,8 +155,13 @@ and are not used for reported results.
   in `stage2_sampling_variance.json`.
 - The Saffran replication has Crossref year 2017 (`10.31234/osf.io/qsyd2`) but
   cached year 2018; the treatment date needs checking in a first-stage rerun.
-- 101 originals share 21 replication DOIs. CR2 intervals handle dependence within
-  an original, not across originals that share a replication.
+- The replication level absorbs shared characteristics of originals tested
+  together; it does not reconstruct the covariance of the first-stage effects
+  across originals from the bootstrap draws.
+- Moderators such as author overlap mean something different for a project that
+  tests forty originals than for a replication of one. The large projects enter
+  the moderator comparisons with the preregistered more-than-three-original
+  indicator; whether they belong in those comparisons at all is undecided.
 - Author seniority is missing for 527 of 591 originals and is not in any model.
 - Access is documented availability at the time of retrieval or audit, not access
   at the replication's publication date.

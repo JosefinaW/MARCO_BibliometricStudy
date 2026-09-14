@@ -152,3 +152,14 @@ cat('Publisher OA, all22 source traces, provenance and final model tests passed\
 stopifnot(sum(pp$multi_original_f[pp$publisher_access_group=='article_oa'])==23L,
  sum(pp$multi_original_f[pp$publisher_access_group=='article_not_publisher_oa'])==46L)
 cat('Multi-original support in both publisher-access groups verified\n')
+
+# One cluster per replication publication; originals without a replication DOI
+# stay separate; recovered identifiers take precedence over cached ones.
+rid <- moderator_replication_id(pub)
+stopifnot(!anyNA(rid),length(rid)==nrow(pub),
+ n_distinct(rid)==511L,
+ sum(startsWith(unique(rid),'no_doi_'))==6L,
+ all(rid[pub$doi_o=='10.1006/jmla.1996.0032']=='10.31234/osf.io/qsyd2'),
+ n_distinct(pub$doi_o[rid=='10.1126/science.aac4716'])==40L,
+ all(tapply(pub$doi_o,rid,n_distinct)[unique(rid[pub$multi_original_f==1])]>3L))
+cat('Replication cluster id tests passed\n')
