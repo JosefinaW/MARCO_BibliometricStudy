@@ -1,0 +1,75 @@
+---
+title: "Successful versus failed replications: citation effects"
+output: html_document
+params:
+  result_path: "results/replication_contrast/result.rds"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+if (!file.exists(params$result_path)) {
+  stop("Run R/prepare_replication_contrast_inputs.R and R/run_replication_contrast.R first; see docs/replication_contrast.md.")
+}
+result <- readRDS(params$result_path)
+library(ggplot2)
+```
+
+The contrast is the average citation effect following a successful replication
+minus that following a failed replication. Each effect is relative to the
+estimated citation trajectory without a recorded replication. Both groups use
+the same replication-cohort weights and event-time window. These are effects
+in the respective outcome groups; their difference does not identify what
+would happen if the same replication succeeded instead of failing.
+
+```{r inference-status, results='asis'}
+if (!result$inference_ok) cat("**Bootstrap inference failed. Confidence intervals are withheld.**\n")
+cat("Selected latent factors:", result$settings$selected_r,
+    ". Requested bootstrap draws:", result$settings$nboots, ".\n")
+cat("Primary event years:", paste(result$settings$primary_times, collapse = ", "), ".\n")
+```
+
+```{r primary}
+knitr::kable(subset(result$estimates, period == "primary"), digits = 3)
+```
+
+```{r event-study, fig.width=9, fig.height=4.5}
+curves <- subset(result$estimates, period != "primary")
+curves$event_time <- as.integer(curves$period)
+ggplot(curves, aes(event_time, estimate)) +
+  geom_hline(yintercept = 0, colour = "grey65") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "steelblue", alpha = .18, na.rm = TRUE) +
+  geom_line(colour = "steelblue4") + geom_point(colour = "steelblue4") +
+  facet_wrap(~estimand) + theme_minimal() +
+  labs(x = "Years since first recorded replication", y = "Citations per paper-year")
+```
+
+Intervals use the standard deviation of a common cluster bootstrap. Each draw
+refits the IFE model and calculates both effects and their difference. The
+factor count and target cohort weights are held fixed after selection on the
+original sample. Intervals are pointwise, not simultaneous event-study bands.
+
+The target sample has observations throughout the event window. Follow-up ends
+before the year of a later recorded attempt. Ambiguous first outcomes, undated
+histories, and first events outside the replication/cohort definition are
+excluded from both treatment groups and the untreated controls.
+
+```{r support}
+knitr::kable(result$support)
+knitr::kable(data.frame(cohort = names(result$weights), weight = unname(result$weights)), digits = 3)
+knitr::kable(as.data.frame(with(result$audit,
+  table(replication_outcome, in_panel, in_fit, in_contrast))))
+```
+
+Pretreatment prediction diagnostics hide the two years immediately before
+publication and refit the model. The table shows held-out citation gaps in
+each group and their difference. These point diagnostics cannot establish that
+post-treatment counterfactual predictions are valid. An error indicates that
+the selected sample/model could not support the diagnostic.
+
+```{r placebo}
+knitr::kable(result$placebo, digits = 3)
+```
+
+```{r bootstrap-failures}
+knitr::kable(subset(result$failures, !is.na(error)))
+```
