@@ -3,3 +3,5 @@
 .RData
 .Ruserdata
 Rplots.pdf
+data/replication_contrast/
+results/replication_contrast/
