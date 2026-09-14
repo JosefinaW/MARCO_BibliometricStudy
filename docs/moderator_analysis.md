@@ -66,9 +66,10 @@ Each answers a narrower question. Outputs carry the suffix in the file names.
 | `publication_access` | Joint categories with any-copy access | `moderator_combined_publication_access_2026-09-08.md` |
 | `publisher_access` | **Primary model above** | `moderator_publisher_access_audit_2026-09-08.md` |
 
-The `corrected` model files are kept as the artifact of the first correction;
-the script that produced them was rewritten into `R/refit_moderators.R`, which
-now produces the next three.
+The `corrected` model files are the saved output of the first correction. No
+committed script regenerates them; the reproduction commands below leave them
+untouched. `R/refit_moderators.R` produces the `publication_form`,
+`oa_within_journal` and `metadata_coverage` models.
 
 ## Data corrections applied to the second stage
 
