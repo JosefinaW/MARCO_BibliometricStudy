@@ -1,0 +1,11 @@
+doi,form,evidence_url,rationale
+10.18718/81781.7,journal_article,https://jcr-econ.org/wp-content/uploads/2022/06/2018-3-Roodman-D-Hookworm-Eradication.pdf,Publisher PDF identifies IREE volume2 2018-3; cache contains only a repository location
+10.23675/sjlas.v45i0.614,journal_article,https://researchprofiles.ku.dk/da/publications/failure-to-replicate-exacerbated-8-oh-dpat-induced-hypothermia-co/,Authors institution identifies Scandinavian Journal of Laboratory Animal Science45 article4 and ISSN0901-3393
+10.17705/1atrr.00044,journal_article,https://aisel.aisnet.org/trr/vol6/iss1/1/,Publisher identifies AIS Transactions on Replication Research6 article1
+10.3205/zma000997,journal_article,https://pubmed.ncbi.nlm.nih.gov/26604997/,NLM identifies GMS Zeitschrift fur medizinische Ausbildung32(5)Doc55 and ISSN1860-3572
+10.1007/s41811-019-00044-8,journal_article,https://link.springer.com/article/10.1007/s41811-019-00044-8,Publisher identifies journal article12 pages73-82; cached book-chapter type is erroneous
+10.17632/4676n2pdrf.3,online_deposit,https://easy.dans.knaw.nl/ui/datasets/id/easy-dataset:285565,Cached metadata location explicitly identifies a DANS dataset and Mendeley Data DOI
+10.17632/3pr3cpx6cg.3,online_deposit,https://easy.dans.knaw.nl/ui/datasets/id/easy-dataset:203264,Cached metadata location explicitly identifies a DANS dataset and Mendeley Data DOI
+10.13140/2.1.4432.0644,online_deposit,https://zenodo.org/record/1093558,Cached metadata identifies Zenodo repository location for ResearchGate DOI
+10.48548/pubdata-2250,online_deposit,https://pubdata.leuphana.de/entities/publication/03f8abf4-42a2-42b9-b60b-99e0e387b0d1,Repository labels this a working paper; DOI-level deposit classification retained because cached type is not preprint
+10.20378/irb-49996,online_deposit,https://fis.uni-bamberg.de/bitstreams/25ede061-f037-4299-9a23-4b360cf79190/download,Repository DOI for a copy of Frontiers article10.3389/fnhum.2021.680885; DOI-level deposit classification does not imply unpublished work

@@ -1,0 +1,9 @@
+Moderator data tests passed
+Upstream metadata join tests passed
+Raw moderator types preserved for downstream analyses
+Publication form and observed journal-OA tests passed
+Metadata coverage coding and model support tests passed
+Combined publication/access categories and full-rank design tests passed
+Publisher OA, all22 source traces, provenance and final model tests passed
+Multi-original support in both publisher-access groups verified
+Publisher model/cache/CSV consistency and preserved effects/variances: PASS

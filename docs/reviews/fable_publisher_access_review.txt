@@ -1,0 +1,25 @@
+The access field is confirmed as Unpaywall, fetched via the roadoi package and cached in `oa_unpaywall.rds`, so the provenance concern closes. All retained sensitivity figures and the 63-of-81 count match the files. Final verdict follows.
+
+**Verdict: no substantive blockers.** Every load-bearing claim I could test read-only reconciles with the code, data, and saved fits. Files reviewed are those on disk at 22:53–22:58 on 8 September 2026 (helpers, refit script, tests, trace overrides, report, Rmd primary section, coefficients CSV, saved fits).
+
+**Verified (all pass)**
+
+- **Tests run clean**, including the assertion added during review that multi-original originals split 23 publisher-OA and 46 no-publisher-OA.
+- **Sample integrity.** 2,690 unique original-year rows, 591 originals, no duplicate keys. Saved data are identical to a fresh `prepare_moderator_publisher` run. Effects, sampling variances, publication years, raw DOI, and raw access field are identical to the primary preparation.
+- **Publisher-OA mapping.** Gold/hybrid/bronze map to 1, green/closed to 0, missing stays missing, unrecognised values error. Cross-tab confirms: no green or closed article in the OA group, no gold/hybrid/bronze in the reference group. All 88 green articles sit in the reference group as intended.
+- **Access provenance.** The field is Unpaywall via roadoi with local cache; the report's labelling is correct.
+- **Traces and overrides.** 23 rows, all keyed to originals in the sample, no duplicates. Verified forms match the assigned groups row for row. Exactly five publisher-OA overrides, all on records with cached status missing, all recorded with the source-audit basis. Duplicate trace rows trigger an error.
+- **Precedence.** Explicit preprint type or source evidence before deposit before article; namespace alone never creates a preprint. Group arithmetic reconciles: 437 articles, 108 preprints, 35 deposits, 11 other.
+- **Recovered Saffran DOI.** Stored only in `recovered_doi_r`; cached DOI stays missing, treatment year stays 2018, Crossref 2017 is flagged in prose only.
+- **Multi-original threshold.** Counted in the full cache: six DOIs, 69 originals, more than three per DOI. Matches the sample.
+- **Model.** Design matrix full rank (35 of 35), identical to the saved fit's matrix. CSV estimates, CR2 standard errors, and Satterthwaite degrees of freedom match the saved fit and an independent clubSandwich recomputation to machine precision. Report table values, degrees of freedom, and retained sensitivity figures match the CSVs.
+- **Protocol statement.** Pages 10–11 say binary Unpaywall access and a three-level strategy with more-than-three-originals meta rule. No host restriction or observation date. The report's deviation statement is accurate and labelled exploratory.
+- **Caveats present**: years 2–6 response scale, clustering conditional on first-stage estimates, unrecovered cross-original dependence, access timing heterogeneity, no causal claim.
+
+**Optional improvements, none blocking**
+
+- **Name the concentration in the scale covariate.** 40 of 69 multi-original originals come from one Science replication and all 46 reference-group multi-original originals are green. The generic shared-DOI caveat covers this, but one sentence naming it would sharpen the interpretation of the multi-original coefficient. Overall, 101 originals share 21 replication DOIs.
+- **Rmd header.** The paragraphs describing the current primary model sit under the heading "Access sensitivity (ordinary journal articles only)". Move them above the primary model chunk or retitle.
+- **Rmd duplicates helper work.** The Rmd recomputes age and centred SNIP after the helper already did, with identical results. Harmless, but removable.
+
+CODE REVIEW: PASS

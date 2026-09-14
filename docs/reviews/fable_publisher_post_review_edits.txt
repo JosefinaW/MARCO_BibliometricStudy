@@ -1,0 +1,4 @@
+After the substantive CODE REVIEW: PASS, two prose-only optional improvements were applied at the parent agent's request:
+- Retitled the Rmd heading to Current specification and retained access sensitivity.
+- Added independently verified concentration counts to the report: 40/69 multi-original originals from one Science DOI;46 reference-group originals green;101 originals share21 replication DOIs.
+No helper, refit, formula, test, data, coefficient, or saved-model changes were made after code-review sign-off. The original review-input hash manifest is retained as the pre-editorial review record.

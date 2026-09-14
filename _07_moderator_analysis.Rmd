@@ -22,8 +22,11 @@ pacman::p_load(
 
 #data load
 ```{r}
-df_meta <- readRDS("data/metadata_OpenAlex.rds")
-meta_r <- readRDS("data/metadata_r_OpenAlex.rds")
+source("R/moderator_data.R")
+df_meta <- readRDS("data/metadata_OpenAlex.rds") %>%
+  mutate(across(c(doi_o, doi_r), normalise_moderator_doi))
+meta_r <- readRDS("data/metadata_r_OpenAlex.rds") %>%
+  mutate(doi = normalise_moderator_doi(doi))
 ```
 
 #switch data source
@@ -94,8 +97,12 @@ range(eff_long$sampling_var)
 #moderators
 ```{r}
 mods <- df_meta %>% dplyr::select(doi_o, doi_r, issn_l, publication_year_r)
-mods_r <- meta_r %>% dplyr::select(doi, issn_l)
-mods <- left_join(mods, mods_r, by = c("doi_r" = "doi"), suffix = c("", "_r"))
+mods_r <- meta_r %>%
+  dplyr::filter(!is.na(doi), doi %in% mods$doi_r) %>%
+  dplyr::select(doi, issn_l) %>%
+  collapse_moderator_rows("doi")
+mods <- left_join(mods, mods_r, by = c("doi_r" = "doi"),
+                  suffix = c("", "_r"), relationship = "many-to-one", na_matches = "never")
 mods <- unique(mods)
 # effect <- df %>% filter(effect_id==1) %>% select(doi_o,doi_r,es_value_o)
 # mods <- merge(mods,effect, by.x=c("doi","doi_r"),by.y=c("doi_o","doi_r"))
@@ -1461,10 +1468,12 @@ mods <- mods %>%
 -meta paper - at least 3 originals associated with one doi_r
 ```{r}
 replic_type <- meta_r %>%
+  filter(!is.na(doi), doi %in% mods$doi_r) %>%
   select(doi, type, host_organization_name) %>%
-  rename(doi_r = doi, type_r = type)
+  rename(doi_r = doi, type_r = type) %>%
+  collapse_moderator_rows("doi_r")
 mods <- mods %>%
-  left_join(replic_type, by = "doi_r")
+  left_join(replic_type, by = "doi_r", relationship = "many-to-one", na_matches = "never")
 
 table(mods$type_r)
 mods %>% filter(type_r == "letter")
@@ -1477,6 +1486,7 @@ mods <- mods %>%
   dplyr::group_by(doi_r) %>%
   dplyr::mutate(
     publication_strategy = dplyr::case_when(
+      all(is.na(doi_r)) ~ "unidentified",
       any(type_r == "preprint", na.rm = TRUE) ~ "preprint",
       any(stringr::str_detect(doi_r, paste(preprint_doi, collapse = "|"))) ~ "preprint",
       any(stringr::str_detect(doi_r, "osf")) ~ "preprint",
@@ -1492,9 +1502,10 @@ table(mods$publication_strategy)
 
 ```{r}
 # add all the newly created moderators
-mods <- unique(mods)
+mods <- collapse_moderator_rows(mods, "doi_o")
+stopifnot(!anyDuplicated(eff_long[c("doi_o", "time")]))
 eff_long <- eff_long %>%
-  left_join(mods, by = c("doi_o"))
+  left_join(mods, by = "doi_o", relationship = "many-to-one")
 
 eff_long %>% arrange(doi_o) %>% View()
 saveRDS(eff_long, paste0("data/eff_long_", data_source, "_", data_outcome, ".rds"))
@@ -1505,7 +1516,7 @@ saveRDS(eff_long, paste0("data/eff_long_", data_source, "_", data_outcome, ".rds
 ```
 ```{r}
 # primary analysis - only include timepoints 2-6 years after publication of replication
-primary <- eff_long %>% filter(time >= (publication_year_r + 2) & time <= (publication_year_r + 6))
+primary <- prepare_moderator_publisher(eff_long)
 
 primary %>% arrange(doi_o)
 ```
@@ -1556,44 +1567,13 @@ primary %>%
   print(n = Inf)
 ```
 ```{r}
-#missingness indicators for is.oa
-primary <- primary %>%
-  mutate(
-    same_journal_f = coalesce(as.integer(same_journal), 0L),
-    is_oa_missing  = as.integer(is.na(is_oa)),
-    is_oa_f        = coalesce(as.integer(is_oa), 0L)
-  )
-
-
-primary <- primary %>%
-  mutate(
-    has_overlap_f  = as.integer(as.logical(has_overlap)),
-    pub_preprint   = as.integer(publication_strategy == "preprint"),
-    pub_meta       = as.integer(publication_strategy == "meta"),
-    snip_missing_f = as.integer(as.logical(snip_missing))
-    # published omitted = reference
-  )
-
-primary <- primary %>%
-  mutate(across(
-    (where(is.logical) | where(is.character)) & !starts_with("doi"),
-    as.factor
-  ))
-
-# Get all subj_ column names from primary
-subj_vars <- paste(grep("^subj_", colnames(primary), value = TRUE), collapse = " + ")
-
-# Build formula dynamically and add -1 to remove reference group
-#formula <- as.formula(paste(
-#  "~ age_r + age_r_sq + has_overlap + publication_strategy + SNIP_centered +
-#   snip_missing + is_oa + seniority + same_journal +",
-#  subj_vars, "- 1"
-#))
-formula <- as.formula(paste(
-  "~ age_r + age_r_sq + has_overlap_f + pub_preprint + pub_meta +
-     SNIP_centered + snip_missing_f + is_oa_f + is_oa_missing + same_journal_f +",
-  subj_vars, "- 1"
-))
+# Joint publication/access categories: article without publisher OA is baseline.
+# Publisher-OA articles, preprints/working papers and deposits are substantive;
+# known conference/chapter/peer-review outputs have one nuisance term.
+# Multi-original replication is adjusted for separately.
+formula <- moderator_publisher_formula(primary)
+X <- model.matrix(formula, primary)
+stopifnot(!anyNA(X), qr(X)$rank == ncol(X))
 #
 # model
 reg_model <- rma.mv(
@@ -1603,7 +1583,12 @@ reg_model <- rma.mv(
   method = "REML", data = primary
 )
 
+stopifnot(reg_model$k == nrow(primary))
 summary(reg_model)
+# Sensitivity to within-original dependence in the first-stage effects.
+# This does not recover cross-original covariance from the original bootstrap.
+reg_model_CR2 <- metafor::robust(reg_model, cluster = primary$doi_o, clubSandwich = TRUE)
+reg_model_CR2
 reg_model$sigma2
 
 # residuals / QQ
@@ -1621,6 +1606,82 @@ plot(res)
 qqnorm(res)
 qqline(res, col = "red")
 ```
+# Current specification and retained access sensitivity
+
+The current primary model uses publisher-OA article, article without publisher
+OA (reference), preprint/working paper, and identified online deposit. Gold,
+hybrid, and bronze statuses count as publisher OA; green repository-only
+copies do not. A source audit classifies the 22 records that the cached metadata
+could not place; 11 other publisher outputs form an explicit nuisance group. Five journal
+access records use documented publisher-source overrides. Multi-original
+replication (>3 originals per DOI) is an additional covariate. Cached raw access,
+DOI, dates, and first-stage results remain unchanged. Sources are audited in
+`data/moderator_publisher_trace_overrides.csv`; results, protocol deviations,
+and limits are documented in `docs/moderator_publisher_access_audit_2026-09-08.md`.
+
+This narrows the protocol's binary Unpaywall access concept to publisher access,
+and replaces its separate three-level publication strategy and binary OA terms
+with joint categories. The >3-original threshold is retained as an additional
+adjustment. These are explicitly exploratory post-inspection deviations; the
+protocol did not prescribe publisher-only access or an access observation date.
+The any-copy access models (`R/refit_moderators.R`, `R/refit_moderators_combined.R`)
+are sensitivity analyses.
+
+The following sensitivity restricts the sample to ordinary journal articles:
+metadata type article plus journal ISSN, with at most three originals per DOI
+(355 originals). All have observed OA in the cache. It estimates an association
+with a detected OA copy of any kind, not an OA-journal publishing effect or access at the
+replication publication date. The publisher-access model above covers more journal
+outputs, because five articles without cached status carry source-audited access;
+every article in that model has a known publisher-access value.
+
+```{r}
+primary_oa <- dplyr::filter(primary, oa_journal_eligible)
+X_oa <- model.matrix(moderator_publication_formula(primary_oa, oa_journal = TRUE), primary_oa)
+stopifnot(!anyNA(X_oa), qr(X_oa)$rank == ncol(X_oa))
+reg_model_oa <- rma.mv(yi = att, V = sampling_var,
+  mods = moderator_publication_formula(primary_oa, oa_journal = TRUE),
+  random = ~1 | doi_o, method = "REML", data = primary_oa)
+stopifnot(reg_model_oa$k == nrow(primary_oa))
+reg_model_oa_CR2 <- metafor::robust(reg_model_oa,
+  cluster = primary_oa$doi_o, clubSandwich = TRUE)
+reg_model_oa_CR2
+```
+
+# Exploratory metadata-coverage moderator
+
+We also retain a useful metadata-coverage variable: status available (503
+originals), status not retrieved despite a replication DOI (81), and DOI
+unavailable (seven). These labels describe the cache, not verified indexing:
+upstream request errors and absent records were both stored as missing status.
+Of the 81 cases with DOI but missing status, 63 nevertheless have OpenAlex type
+metadata. Coverage varies within preprint/repository (57 available, 68 missing)
+and other-output groups (22 available, 13 missing); all journal-article groups
+have observed status. The following exploratory contrast assumes a common
+coverage association across the two strata that supply that variation. It
+cannot identify a coverage association within journal articles. Missing DOI
+remains a separate form nuisance term. OA status is not included in this model.
+
+```{r}
+coverage_formula <- moderator_publication_formula(primary, metadata_coverage = TRUE)
+X_coverage <- model.matrix(coverage_formula, primary)
+stopifnot(!anyNA(X_coverage), qr(X_coverage)$rank == ncol(X_coverage))
+reg_model_coverage <- rma.mv(yi = att, V = sampling_var,
+  mods = coverage_formula, random = ~1 | doi_o, method = "REML", data = primary)
+stopifnot(reg_model_coverage$k == nrow(primary))
+reg_model_coverage_CR2 <- metafor::robust(reg_model_coverage,
+  cluster = primary$doi_o, clubSandwich = TRUE)
+reg_model_coverage_CR2
+```
+
+# Historical exploratory analyses
+
+The analyses below retain their original exploratory specifications, including
+OA/publication coding. They are not the revised primary or access sensitivity
+models and are not used for the presentation's moderator claims. Reproduce the
+primary model from cached data with `Rscript R/refit_moderators_publisher.R`; the
+reproduction order for all models is in `docs/moderator_analysis.md`.
+
 #metaCART 
 
 ```{r}
