@@ -1,0 +1,46 @@
+{
+  "source": "/Users/lukaswallrich/Downloads/fit_citation_Scopus.rds",
+  "source_md5": "c985c3ec5ed83e6dbb2139b327754432",
+  "bootstrap_replicates": 500,
+  "estimand": "-100 * sum(Y - Y0) / sum(Y0), observed treated post cells",
+  "point": {
+    "n": 5041,
+    "observed": 130071,
+    "counterfactual": 158387.13739983729,
+    "att": -5.617166712922,
+    "reduction_pct": 17.877801104742,
+    "negative_counterfactual_cells": 407
+  },
+  "bootstrap_se_percentage_points": 19.264642830507,
+  "intervals": [
+    {
+      "method": "normal",
+      "estimate": 17.877801104742,
+      "lower": -19.88020501808,
+      "upper": 55.635807227564
+    },
+    {
+      "method": "percentile",
+      "estimate": 17.877801104742,
+      "lower": -50.929865262527,
+      "upper": 27.193627595451
+    },
+    {
+      "method": "basic",
+      "estimate": 17.877801104742,
+      "lower": 8.561974614033,
+      "upper": 86.68546747201
+    }
+  ],
+  "primary_interval": "normal",
+  "rationale": "Normal/Wald bootstrap-SE interval, consistent with saved model; percentile and basic sensitivities also reported.",
+  "bootstrap_counterfactual_total_range": [71320.842749025527, 241618.78226503561],
+  "raw_att": {
+    "ATT.avg": -5.617166712922,
+    "S.E.": 4.496770307453,
+    "CI.lower": -14.430674562279,
+    "CI.upper": 3.196341136436,
+    "p.value": 0.2116080946109
+  },
+  "max_bootstrap_att_reconstruction_error": 0
+}
