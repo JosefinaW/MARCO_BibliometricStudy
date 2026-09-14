@@ -1,0 +1,12 @@
+{
+  "source": "/Users/lukaswallrich/Downloads/fit_citation_Scopus.rds",
+  "source_md5": "c985c3ec5ed83e6dbb2139b327754432",
+  "bootstrap_replicates": 500,
+  "definition": "var over draws of eff.boot[, j, b] with colnames.boot[[b]][j] == original column; one column per original per draw",
+  "draws_per_original_range": [290, 356],
+  "draws_per_original_median": 316,
+  "originals": 591,
+  "rows": 6382,
+  "distinct_cells": 5041,
+  "median_sampling_var": 1.875975212389
+}

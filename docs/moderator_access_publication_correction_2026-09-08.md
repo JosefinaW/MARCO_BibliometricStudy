@@ -1,3 +1,5 @@
+*Coefficients in this note use sampling variances taken by bootstrap column position. Current estimates, with variances by original identity, are in [moderator_analysis.md](moderator_analysis.md).*
+
 Current presentation model: [combined publication/access categories](moderator_combined_publication_access_2026-09-08.md). The models in this report are retained as sensitivities.
 
 # Publication form and access: corrected moderator specification

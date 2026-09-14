@@ -1,3 +1,5 @@
+*Coefficients in this note use sampling variances taken by bootstrap column position. Current estimates, with variances by original identity, are in [moderator_analysis.md](moderator_analysis.md).*
+
 Superseded main model: see [publisher access and complete source audit](moderator_publisher_access_audit_2026-09-08.md). This any-copy model remains a sensitivity.
 
 # Current moderator model: publication form with article access

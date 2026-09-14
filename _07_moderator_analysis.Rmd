@@ -52,22 +52,14 @@ E <- fit$eff
 M <- (fit$D.dat == 1)
 E[!M] <- NA
 
-# Dimensions already match — no need to assign rownames/colnames
-boot_arr <- fit$eff.boot # 27 x 900 x 500
+# Sampling variance and SE per cell across the bootstrap draws, matched to each
+# original through colnames.boot. Needs a fit saved with keep.sims = TRUE.
+cells <- bootstrap_cell_variance(fit)
+cell_var <- cells$var
+cell_se <- cells$se
+summary(as.vector(cells$n_draws[1, ])) # draws per original
 
-# Sampling variance and SE across 500 bootstrap draws per cell
-cell_var <- apply(boot_arr, c(1, 2), var, na.rm = TRUE)
-cell_se <- apply(boot_arr, c(1, 2), sd, na.rm = TRUE)
-
-cell_n <- apply(boot_arr, c(1, 2), function(x) sum(!is.na(x)))
-hist(cell_n)
-
-
-# Copy dimnames from eff to the derived matrices
-dimnames(cell_var) <- dimnames(fit$eff)
-dimnames(cell_se) <- dimnames(fit$eff)
-
-# Reshape all three to long format
+# Reshape all four to long format
 eff_long <- as.data.frame(E) %>%
   tibble::rownames_to_column("time") %>%
   tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "att")
@@ -80,11 +72,16 @@ se_long <- as.data.frame(cell_se) %>%
   tibble::rownames_to_column("time") %>%
   tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "sampling_se")
 
+n_long <- as.data.frame(cells$n_draws) %>%
+  tibble::rownames_to_column("time") %>%
+  tidyr::pivot_longer(-time, names_to = "doi_o", values_to = "boot_draws")
+
 # Join and clean
 eff_long <- eff_long %>%
   dplyr::left_join(var_long, by = c("time", "doi_o")) %>%
   dplyr::left_join(se_long, by = c("time", "doi_o")) %>%
-  dplyr::mutate(time = as.integer(time)) %>%
+  dplyr::left_join(n_long, by = c("time", "doi_o")) %>%
+  dplyr::mutate(time = as.integer(time), boot_draws = as.integer(boot_draws)) %>%
   dplyr::filter(!is.na(att))
 
 head(eff_long)

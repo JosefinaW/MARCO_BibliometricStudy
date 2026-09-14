@@ -1,6 +1,6 @@
 Rows: 2690
 Originals: 591
-Between-paper SD: 29.8427912847993
+Between-paper SD: 21.765952052547
 ~age_r + age_r_sq + has_overlap_f + SNIP_centered + snip_missing_f + 
     same_journal_f + same_journal_missing + multi_original_f + 
     group_article_oa + group_preprint + group_online_deposit + 

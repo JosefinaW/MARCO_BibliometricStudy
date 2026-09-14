@@ -1,3 +1,44 @@
+# Per-cell sampling variance of the first-stage effects across bootstrap draws.
+# fect stores the draws in resampled order: eff.boot[, j, b] belongs to the
+# original column colnames.boot[[b]][j] of eff, and units sampled several times
+# in one draw occupy several columns holding identical values. Variances are
+# therefore taken per original identity, counting each unit once per draw.
+bootstrap_cell_variance <- function(fit) {
+  eff <- fit$eff
+  boot <- fit$eff.boot
+  cols <- fit$colnames.boot
+  stopifnot(!is.null(eff), !is.null(boot), !is.null(cols))
+  B <- dim(boot)[3]
+  N <- ncol(eff)
+  stopifnot(length(dim(boot)) == 3L, dim(boot)[1] == nrow(eff), dim(boot)[2] == N,
+            B > 1L, length(cols) == B,
+            all(vapply(cols, function(x) length(x) == N && all(x %in% seq_len(N)),
+                       logical(1))))
+  s1 <- matrix(0, nrow(eff), N)
+  s2 <- matrix(0, nrow(eff), N)
+  n <- integer(N)
+  for (b in seq_len(B)) {
+    ids <- cols[[b]]
+    keep <- !duplicated(ids)
+    i <- ids[keep]
+    # Centre on the point estimate: the deviations stay on the SD scale, so the
+    # single-pass sums of squares stay numerically accurate.
+    dev <- matrix(boot[, keep, b], nrow(eff), length(i)) - eff[, i, drop = FALSE]
+    s1[, i] <- s1[, i] + dev
+    s2[, i] <- s2[, i] + dev^2
+    n[i] <- n[i] + 1L
+  }
+  n_mat <- matrix(n, nrow(eff), N, byrow = TRUE)
+  v <- (s2 - s1^2 / n_mat) / (n_mat - 1L)
+  v[n_mat < 2L] <- NA_real_
+  dn <- dimnames(eff)
+  dimnames(v) <- dn
+  dimnames(n_mat) <- dn
+  se <- sqrt(v)
+  dimnames(se) <- dn
+  list(var = v, se = se, n_draws = n_mat)
+}
+
 normalise_moderator_doi <- function(x) {
   x <- tolower(trimws(as.character(x)))
   x <- sub("^https?://(dx\\.)?doi\\.org/", "", x)
@@ -220,4 +261,14 @@ moderator_publisher_formula <- function(data) {
     'snip_missing_f','same_journal_f','same_journal_missing','multi_original_f',
     paste0('publisher_group_',c('article_oa','preprint','online_deposit','other_publisher_output')),
     subject),intercept=FALSE)
+}
+
+# Preregistered additive specification: publication strategy and any-copy access
+# enter as separate terms, each with its own missingness indicator.
+moderator_primary_formula <- function(data) {
+  subject <- grep('^subj_',names(data),value=TRUE)
+  subject <- subject[vapply(data[subject],function(x) any(x!=0),logical(1))]
+  stats::reformulate(c('age_r','age_r_sq','has_overlap_f','pub_preprint','pub_meta',
+    'SNIP_centered','snip_missing_f','is_oa_f','is_oa_missing','same_journal_f',
+    'same_journal_missing',subject),intercept=FALSE)
 }

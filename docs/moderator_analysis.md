@@ -25,19 +25,20 @@ Results (differences in citations per original per year; positive means a smalle
 
 | Contrast | Difference | 95% CR2 interval | p |
 |---|---:|---:|---:|
-| Publisher-OA article vs no publisher OA | −0.28 | [−6.22, 5.66] | .93 |
-| Preprint or working paper vs no publisher OA | 5.99 | [−10.13, 22.12] | .44 |
-| Online deposit vs no publisher OA | 5.42 | [−11.86, 22.70] | .52 |
-| Shared author vs none | 1.02 | [−4.85, 6.88] | .73 |
-| Same journal vs different | −0.59 | [−8.93, 7.76] | .89 |
-| SNIP, per one-point increase | −0.85 | [−2.65, 0.95] | .35 |
-| Multi-original replication | 6.55 | [−3.39, 16.48] | .19 |
+| Publisher-OA article vs no publisher OA | −0.13 | [−4.64, 4.38] | .95 |
+| Preprint or working paper vs no publisher OA | 4.95 | [−7.61, 17.51] | .42 |
+| Online deposit vs no publisher OA | 6.40 | [−7.88, 20.67] | .36 |
+| Shared author vs none | 0.25 | [−4.80, 5.30] | .92 |
+| Same journal vs different | 0.58 | [−4.88, 6.04] | .83 |
+| SNIP, per one-point increase | −0.46 | [−1.78, 0.87] | .49 |
+| Multi-original replication | 3.33 | [−4.14, 10.81] | .37 |
 
 The years-since-replication terms are read jointly: year 6 versus year 2 is
-about −3 citations per year. Between-original standard deviation is about 30
-citations per year. No moderator is distinguishable from zero; the intervals are
-too wide to claim equivalence. Full account, including the 22 source-audited
-records and the protocol deviations: `moderator_publisher_access_audit_2026-09-08.md`.
+about +0.7 citations per year, CR2 SE 0.30. Between-original standard deviation
+is about 22 citations per year. No contrast in the table above is
+distinguishable from zero; the intervals are too wide to claim equivalence.
+Full account, including the 22 source-audited records and the protocol
+deviations: `moderator_publisher_access_audit_2026-09-08.md`.
 
 ## Deviations from the preregistration
 
@@ -66,10 +67,9 @@ Each answers a narrower question. Outputs carry the suffix in the file names.
 | `publication_access` | Joint categories with any-copy access | `moderator_combined_publication_access_2026-09-08.md` |
 | `publisher_access` | **Primary model above** | `moderator_publisher_access_audit_2026-09-08.md` |
 
-The `corrected` model files are the saved output of the first correction. No
-committed script regenerates them; the reproduction commands below leave them
-untouched. `R/refit_moderators.R` produces the `publication_form`,
-`oa_within_journal` and `metadata_coverage` models.
+`R/refit_moderators_corrected.R` produces the `corrected` model.
+`R/refit_moderators.R` produces the `publication_form`, `oa_within_journal` and
+`metadata_coverage` models.
 
 ## Data corrections applied to the second stage
 
@@ -82,8 +82,18 @@ untouched. `R/refit_moderators.R` produces the `publication_form`,
 - **Binary coding.** `as.integer()` on factor-valued TRUE/FALSE columns gave
   codes 1 and 2. `moderator_binary()` decodes labels explicitly; missing same-journal
   gets its own indicator.
-- **Missing replication DOI** is a separate category and no longer groups seven
-  unrelated originals into one apparent multi-original replication.
+- **Missing replication DOI** is a separate category, so the seven originals
+  without one do not form an apparent multi-original replication.
+- **Sampling variances by original identity.** `fect` stores each bootstrap
+  draw's columns in resampled order: `eff.boot[, j, b]` belongs to the original
+  column `colnames.boot[[b]][j]` of `eff`, and a unit drawn several times in one
+  draw fills several columns with identical values. `bootstrap_cell_variance()`
+  in `R/moderator_data.R` maps every draw's columns back through
+  `colnames.boot` and takes the variance per original, counting each unit once
+  per draw. Each original appears in 290 to 356 of the 500 draws, recorded in
+  the `boot_draws` column of `data/eff_long_Scopus_citation.rds`.
+  `R/rebuild_stage2_variances.R` regenerates the variances from a first-stage
+  fit saved with `keep.sims = TRUE`.
 
 ## Aggregate percentage reduction (main effect, not a moderator)
 
@@ -109,16 +119,20 @@ provenance: `overall_percent_reduction.json` and `overall_percent_reduction_2026
 ## Reproduction, in order, from the project root
 
 ```
+Rscript R/rebuild_stage2_variances.R <path to fect fit with keep.sims = TRUE>
 Rscript tests/test_moderator_data.R
+Rscript tests/test_bootstrap_variance.R
+Rscript R/refit_moderators_corrected.R
 Rscript R/refit_moderators_publisher.R
 Rscript R/refit_moderators_combined.R
 Rscript R/refit_moderators.R
 Rscript R/overall_percent_reduction.R <path to fect fit with keep.sims = TRUE>
 ```
 
-All scripts read only cached files in `data/` and `models/`; no API calls. The
-tests check DOI normalisation, the row collapse, binary decoding, group sizes,
-and design-matrix rank. `_07_moderator_analysis.Rmd` uses the same helpers for
+Apart from the two scripts that take a first-stage fit with bootstrap draws, all
+scripts read only cached files in `data/` and `models/`; no API calls. The tests
+check DOI normalisation, the row collapse, binary decoding, group sizes,
+design-matrix rank, and the mapping of bootstrap draws to originals. `_07_moderator_analysis.Rmd` uses the same helpers for
 its primary section; its later exploratory sections keep their original coding
 and are not used for reported results.
 
@@ -127,6 +141,9 @@ and are not used for reported results.
 - The committed first-stage fit `models/fit_citation_Scopus.rds` has no bootstrap
   draws (`_06_fect_analysis.Rmd` sets `keep.sims = FALSE`), so the per-cell
   variances in `data/eff_long_Scopus_citation.rds` cannot be regenerated from it.
+  They were last regenerated from the 500-draw fit (461 MB, MD5
+  `c985c3ec5ed83e6dbb2139b327754432`) held outside the repository; provenance is
+  in `stage2_sampling_variance.json`.
 - The Saffran replication has Crossref year 2017 (`10.31234/osf.io/qsyd2`) but
   cached year 2018; the treatment date needs checking in a first-stage rerun.
 - 101 originals share 21 replication DOIs. CR2 intervals handle dependence within

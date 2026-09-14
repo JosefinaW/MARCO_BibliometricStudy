@@ -1,3 +1,5 @@
+*Coefficients in this note use sampling variances taken by bootstrap column position. Current estimates, with variances by original identity, are in [moderator_analysis.md](moderator_analysis.md).*
+
 Current specification: see [publication form, access, and metadata coverage](moderator_access_publication_correction_2026-09-08.md). This report documents the earlier duplicate/binary-coding correction; its additive OA/missing-OA model is superseded.
 
 # Moderator correction, 8 September 2026

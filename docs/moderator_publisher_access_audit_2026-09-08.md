@@ -1,3 +1,5 @@
+*Coefficients in this note use sampling variances taken by bootstrap column position. Current estimates, with variances by original identity, are in [moderator_analysis.md](moderator_analysis.md).*
+
 # Current moderator model: publisher access and replication records
 
 We now distinguish **OA at the publisher**, including hybrid articles, from repository-only availability. We traced all 22 previously unresolved records to identifiable output types. The main model compares publisher-OA articles, articles without publisher OA, preprints/working papers, and other online deposits. Eleven genuine other publisher outputs remain a separate nuisance group; none is labelled unknown or forced into an unsuitable category.
