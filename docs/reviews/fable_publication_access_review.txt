@@ -1,0 +1,34 @@
+Review complete. Summary of findings follows.
+
+**Premise check.** The prior sign-off file `docs/reviews/fable_publication_access_review.txt` is 0 bytes. I could not confirm any previous Fable review, so I reviewed from scratch.
+
+## Verified (evidence from read-only reruns)
+
+- **Original effects and variances preserved.** All 2,690 rows of the new primary data merge 1:1 with `data/primary_Scopus_citation_corrected.rds`; max difference in `att` and `sampling_var` is 0. Every selected effect matches `models/fit_citation_Scopus.rds` (`eff` exact, `I.dat` and `D.dat` all 1).
+- **Unique original-year rows.** Raw cache has 237 duplicated (doi_o, time) rows; the collapse leaves 0 duplicates, 2,690 rows, 591 originals. The collapse errors on conflicting values (test covers this).
+- **Outputs match saved fits.** Both new CSVs agree with their saved `rma.mv` and CR2 objects to ~1e-13. Saved data files are identical to the recomputed data. Saved formulas match the helper. The old corrected CSV also agrees with its saved fit (34 terms, diff 5e-14), and the old model, data and CSV files remain in place.
+- **Rank/identifiability.** Both design matrices are full rank with no NA; `k == nrow(data)` in both fits. Subject shares sum to 1 (they play the intercept role), so the SNIP centering from the full sample is harmless in the restricted OA fit. `same_journal_missing` is correctly dropped in the OA model because no journal article has missing same-journal status.
+- **Binary coding.** `moderator_binary` decodes labels before integer conversion; factor and logical inputs give identical codes (test). `has_overlap` has no NA (541/50).
+- **Missing-DOI group.** All seven cached "meta" cases with NA `doi_r` become `unidentified`, not multi-original. Every `multi_original_article` DOI has >3 originals in the full cache (4 to 40); every `journal_article` has ≤3. Strategy × form crosstab is block-diagonal (no leakage).
+- **Preprint/repository group.** 105 typed `preprint` plus 20 non-preprint-typed records; all 20 are in the three declared namespaces (OSF 10.17605, PsychArchives, Zenodo). The two closed preprints are PsyArXiv/OSF records typed `preprint`.
+- **Missing OA artefact.** 88 missing OA: 68 preprint/repository, 7 unidentified, 13 other_output; 0 among the 355 journal articles. The 8 no-ISSN "articles" in other_output are data deposits (Mendeley Data, ResearchGate, pubdata), not journals.
+- **Report numbers.** Crosstab table, all five contrasts, OA 3.68 [−3.84, 11.21] p = .336, prior OA 5.19, df ≈ 24 for preprint, 202/153 OA split, sample sizes all match the CSVs.
+- **Tests** in `tests/test_moderator_data.R` pass.
+
+## Statistical claims
+
+None unsupported. The note's "missingness … is not an access regime" (line 17) is an inference from the crosstab pattern, consistent with the data but not proven; the note already frames the analysis as exploratory. The OA estimand (observed Unpaywall copy, within ordinary journal articles) and the publication-form reference are stated defensibly with their limits.
+
+## Non-blocking disclosures
+
+- **Revised Rmd join path not executed.** The cache was produced by the old join code; the note (line 54) says so. My evidence that `collapse_moderator_rows(mods, "doi_o")` would not error is indirect (the doi_o/time collapse on the cache passed with doi_r as a value column).
+- **Earlier note `docs/moderator_correction_2026-09-08.md`** describes the superseded additive model with `is_oa_missing`. It does not claim to be current, but readers could be confused without a pointer to the new note.
+
+## Optional improvements
+
+- **Seven ISSN-bearing journal records sit in other_output** because OpenAlex types them review/letter/editorial: 10.1177/1091142114568659, 10.1037/a0035736, 10.3758/s13414-017-1408-4, 10.1073/pnas.2000311117, 10.1080/17588928.2017.1372405, 10.1007/s12144-021-02065-z, 10.1017/s1930297500003144. They are excluded from the baseline and from the OA comparison. Hand-check, or treat `review` + ISSN as journal article.
+- **Two preprint rule sets.** The helper uses three namespaces; the Rmd's `publication_strategy` uses the `preprint_doi` prefix list plus an `osf` substring. Zero divergence in the current cache, but a future rerun could differ. Make one the source of truth.
+- **Rmd OA chunk** lacks the rank and `k == nrow` assertions that the primary chunk and refit script have.
+- **`previous_estimate` column** in the OA CSV comes from a different specification and sample; label or drop it.
+
+CODE REVIEW: PASS

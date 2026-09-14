@@ -1,0 +1,16 @@
+Rows: 2690
+Originals: 591
+Between-paper SD: 21.7754184803452
+~age_r + age_r_sq + gap_years + has_overlap_f + SNIP_centered + 
+    snip_missing_f + same_journal_f + same_journal_missing + 
+    multi_original_f + group_article_oa + group_preprint + group_online_deposit + 
+    group_article_access_unknown + group_other_unclassified + 
+    group_doi_unavailable + subj_cognitive_psychology + subj_developmental_psychology + 
+    subj_social_psychology + subj_psychology_other + subj_biological_neuropsychology + 
+    subj_clinical_psychology + subj_differential_personality_diagnostics + 
+    subj_human_medicine + subj_sociology_social_sciences + subj_health_sciences_general + 
+    subj_biology + subj_education + subj_political_science + 
+    subj_general_comparative_literature_linguistics + subj_microeconomics + 
+    subj_marketing + subj_macroeconomics + subj_behavioural_experimental_economics + 
+    subj_finance + subj_business_administration + subj_economics_business + 
+    subj_psychology + subj_other - 1

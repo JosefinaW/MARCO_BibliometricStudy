@@ -115,15 +115,16 @@ analysis_padded <- merge(
   by = c("issn_l", "year"),
   all.x = TRUE # keep all rows from analysis_padded (left join)
 )
-# age2
-analysis_padded <- analysis_padded %>%
-  group_by(doi_queried) %>%
-  mutate(
-    age  = year - publication_year,
-    age2 = age^2
-  ) %>%
-  ungroup() %>%
-  arrange(doi_queried, year)
+# Deviation from the preregistration: article age squared is not a covariate.
+# Net of paper and year fixed effects, age^2 reduces to a linear time trend with
+# a slope set by the publication year, which the one-factor IFE term already
+# supplies with a freely estimated slope per paper. The coefficient is therefore
+# not identified in practice (-0.040 in the March 2026 fit, -0.006 in the
+# September 2026 fit) while the ATT moves by under 0.5 citations/yr when the term
+# is dropped. In etwfe the interacted age^2 term swings the Poisson estimate from
+# +8% to -25%. See docs/age2_note.html. models/fit_citation_Scopus.rds was fitted
+# with age^2 and reflects the preregistered formula until the next first-stage run.
+analysis_padded <- analysis_padded %>% arrange(doi_queried, year)
 
 # forward fill sjr
 analysis_padded <- analysis_padded %>%
@@ -143,7 +144,7 @@ summary(analysis_padded)
 # Identify number of factors
 
 fit_factor <- fect(
-  n_citations ~ D + age2 + sjr,
+  n_citations ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -161,7 +162,7 @@ fit_factor <- fect(
 # analysis - run only with the factor selected as best
 ```{r}
 fit <- fect(
-  n_citations ~ D + age2 + sjr,
+  n_citations ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -197,7 +198,7 @@ saveRDS(fit, paste0("models/fit_citation_", data_source, ".rds"))
 placebo_win <- c(-4, -1)
 
 fit_placebo <- fect(
-  n_citations ~ D + age2 + sjr,
+  n_citations ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -245,7 +246,7 @@ res$test.out
 str(analysis_padded)
 
 fit_factor_nococit <- fect(
-  n_nococit ~ D + age2 + sjr,
+  n_nococit ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -262,7 +263,7 @@ fit_factor_nococit <- fect(
 # analysis - run only with the factor selected as best
 ```{r}
 fit_nococit <- fect(
-  n_nococit ~ D + age2 + sjr,
+  n_nococit ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -292,7 +293,7 @@ saveRDS(fit_nococit, paste0("models/fit_nococitation_", data_source, ".rds"))
 placebo_win <- c(-4, -1)
 
 fit_placebo <- fect(
-  n_nococit ~ D + age2 + sjr,
+  n_nococit ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -352,7 +353,7 @@ analysis_etwfe <- analysis_padded %>%
 # Set fixest options globally before fitting
 setFixest_estimation(glm.iter = 10000, fixef.iter = 10000)
 etwfe_fit <- etwfe(
-  fml       = n_citations ~ sjr + age2, # controls; unit & time FE added automatically
+  fml       = n_citations ~ sjr, # control; unit & time FE added automatically
   tvar      = year, # time variable
   gvar      = g, # treatment timing (0 = never treated)
   data      = analysis_etwfe,
@@ -406,7 +407,7 @@ emfx(etwfe_fit, type = "group") %>% plot()
 # Set fixest options globally before fitting
 setFixest_estimation(glm.iter = 10000, fixef.iter = 10000)
 etwfe_fit_nococit <- etwfe(
-  fml       = n_nococit ~ sjr + age2, # controls; unit & time FE added automatically
+  fml       = n_nococit ~ sjr, # control; unit & time FE added automatically
   tvar      = year, # time variable
   gvar      = g, # treatment timing (0 = never treated)
   data      = analysis_etwfe,

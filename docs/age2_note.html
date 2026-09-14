@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Why age² adds nothing the factor model does not already have</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --dark:#2c3e50; --accent:#3498db; --green:#27ae60; --red:#e74c3c; --grey:#7f8c8d; --bg:#fbfcfd; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color:#222; background:var(--bg); margin:0; line-height:1.55; }
+  main { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+  h1 { font-size: 1.9rem; color: var(--dark); line-height:1.25; margin-bottom:.3rem; }
+  h2 { font-size: 1.3rem; color: var(--dark); margin-top: 2.4rem; border-bottom: 2px solid #e3e8ee; padding-bottom:.25rem; }
+  .meta { color: var(--grey); font-size:.95rem; margin-bottom:1.6rem; }
+  .summary { background:#eef6fc; border-left:5px solid var(--accent); padding:.9rem 1.2rem; border-radius:4px; margin:1.2rem 0; }
+  .summary p { margin:.4rem 0; }
+  figure { margin: 1.4rem 0; background:#fff; border:1px solid #e3e8ee; border-radius:6px; padding:.8rem 1rem .6rem; }
+  figure img { width:100%; height:auto; display:block; }
+  figcaption { font-size:.9rem; color:#444; margin-top:.5rem; }
+  .formula { font-family: "Times New Roman", Georgia, serif; font-size:1.25rem; text-align:center; margin:1rem 0; }
+  .formula .absorbed { color: var(--grey); text-decoration: line-through; }
+  .formula .keep { color: var(--accent); font-weight:600; }
+  table { border-collapse: collapse; width:100%; font-size:.95rem; margin:1rem 0; }
+  th, td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid #e3e8ee; vertical-align: top; }
+  th { background:#f1f4f7; }
+  .rec { background:#eafaf1; border-left:5px solid var(--green); padding:.9rem 1.2rem; border-radius:4px; }
+  .aside { font-size:.92rem; color:#444; background:#f6f7f9; padding:.7rem 1rem; border-radius:4px; }
+  code { background:#f1f4f7; padding:.05rem .3rem; border-radius:3px; font-size:.92em; }
+  abbr { text-decoration: underline dotted; cursor: help; }
+  ol li, ul li { margin:.35rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Why age² adds nothing the factor model does not already have</h1>
+<p class="meta">Note for Josefina · Scopus FECT model, fit of 7 September 2026 · Lukas, 8 September 2026</p>
+
+<div class="summary">
+  <p><strong>The point in three sentences.</strong> Once a model has paper fixed effects and year fixed effects, the only part of age² that is left is a straight-line time trend whose slope is set by the paper's publication year. The one-factor <abbr title="interactive fixed effects: each paper gets its own loading on a common time factor">IFE</abbr> term in our fect model is also a straight-line time trend with a paper-specific slope, because the estimated factor is almost exactly linear in calendar year. Two terms of the same shape compete for the same variation, so the age² coefficient is not pinned down, which is why it moved from −0.040 to −0.006 between the March and September fits while the ATT barely changed.</p>
+</div>
+
+<h2>1. What age² is made of</h2>
+<p>Age is calendar year minus publication year. Squaring it gives three pieces:</p>
+<p class="formula">age² = (year − pub)² = year² − 2 · year · pub + pub²</p>
+<p>Figure 1 shows the raw age² curves for three imaginary papers published in 2000, 2005 and 2010. They are the same parabola, shifted along the time axis. The panel is drawn as balanced (every paper in every year, negative ages allowed) because that makes the algebra below easy to see; the conclusion does not depend on it, see the note at the end.</p>
+<figure>
+  <img src="age2_note_files/fig1_age2_curves.svg" alt="Three parabolas of age squared against calendar year for papers published in 2000, 2005 and 2010">
+  <figcaption><strong>Figure 1.</strong> Age² over calendar years for three papers. Each curve is the same shape, displaced by the publication year.</figcaption>
+</figure>
+
+<h2>2. What the fixed effects take away</h2>
+<p>fect with <code>force = "two-way"</code> estimates a fixed effect for every paper and for every calendar year. A paper fixed effect absorbs anything that is constant within a paper; a year fixed effect absorbs anything that is constant within a year. Applied to the three pieces of age²:</p>
+<p class="formula"><span class="absorbed">year²</span> &nbsp;−&nbsp; <span class="keep">2 · year · pub</span> &nbsp;+&nbsp; <span class="absorbed">pub²</span></p>
+<ul>
+  <li><code>year²</code> is the same for every paper in a given year. The year effects absorb it.</li>
+  <li><code>pub²</code> is the same for a paper in every year. The paper effects absorb it.</li>
+  <li><code>−2 · year · pub</code> is a product of a paper constant and a time variable. Nothing absorbs it.</li>
+</ul>
+<p>So, net of the fixed effects, age² <em>is</em> the term −2 · year · pub: a straight line in calendar time whose slope depends on when the paper was published. Figure 2 shows what is left of the three curves after subtracting paper means and year means. The parabolas become straight lines, and the slopes are ordered by publication year.</p>
+<figure>
+  <img src="age2_note_files/fig2_after_fixed_effects.svg" alt="The same three series after removing paper means and year means: three straight lines with different slopes">
+  <figcaption><strong>Figure 2.</strong> The same three series after two-way demeaning. Only a linear trend with a publication-year-specific slope remains. This is all that age² contributes once paper and year effects are in the model.</figcaption>
+</figure>
+<p>A consequence worth stating on its own: the quadratic was meant to capture the citation life-cycle, a rise followed by a decline. In a two-way fixed-effects model it cannot do that. The common curvature is absorbed; what survives is one trend term per paper, not a curve.</p>
+
+<h2>3. What the factor is doing</h2>
+<p>The IFE part of the model adds λ<sub>i</sub> · f<sub>t</sub>: one common time factor f<sub>t</sub>, and a loading λ<sub>i</sub> that is estimated freely for every paper. Cross-validation selected one factor. Figure 3 plots that estimated factor against calendar year for the September fit. It is very close to a straight line.</p>
+<figure>
+  <img src="age2_note_files/fig3_estimated_factor.svg" alt="Estimated factor by year, nearly a straight line, with the fitted linear trend">
+  <figcaption><strong>Figure 3.</strong> The estimated factor from <code>fit$factor</code>, 1999–2025. Correlation with calendar year 0.99.</figcaption>
+</figure>
+<p>Figure 4 shows what the loadings track. They follow how heavily cited a paper is (correlation 0.73 with mean citations per year, 0.47 against the log scale shown in the figure) and hardly at all its publication year (0.11). In words: the factor model has learned that well-cited papers gain citations faster than poorly cited ones, year on year, and it gives each paper its own slope on that shared linear trend.</p>
+<figure>
+  <img src="age2_note_files/fig4_loadings.png" alt="Loadings against mean citations (left) and against publication year (right)">
+  <figcaption><strong>Figure 4.</strong> Paper loadings on the factor. Left: against mean observed citations per year (log scale). Right: against publication year. Blue points are treated papers, grey are controls. The left panel omits the 200 papers with no observed citations, whose log is undefined.</figcaption>
+</figure>
+
+<h2>4. Why the two terms collide</h2>
+<p>Put sections 2 and 3 side by side:</p>
+<table>
+  <tr><th>Term</th><th>Shape after fixed effects</th><th>Slope per paper</th></tr>
+  <tr><td>age² × β</td><td>straight line in year</td><td>−2 β · pub<sub>i</sub>, fixed by the publication year</td></tr>
+  <tr><td>λ<sub>i</sub> · f<sub>t</sub>, with f<sub>t</sub> ≈ linear</td><td>straight line in year</td><td>λ<sub>i</sub>, estimated freely</td></tr>
+</table>
+<p>If the factor were exactly a straight line, any value of β could be undone by shifting every paper's loading by 2 β · pub<sub>i</sub>. The fitted values would be identical, so the data could not tell one β from another. The factor is not exactly linear, so β is technically identified, but only through the small curvature at the ends of Figure 3. That is a flat ridge in the likelihood: the estimate wanders between fits, its standard error is unreliable, and the optimiser has little to grip. The counterfactual predictions, on the other hand, are the same whichever way the variation is split, so the ATT is hardly affected.</p>
+<p>The numbers behave exactly as this predicts:</p>
+<table>
+  <tr><th>Fit</th><th>age² coefficient (SE)</th><th>ATT</th><th>Iterations to converge</th></tr>
+  <tr><td>March 2026, 101 treated</td><td>−0.040 (0.005)</td><td>−6.75</td><td>–</td></tr>
+  <tr><td>September 2026, 591 treated</td><td>−0.006 (0.003)</td><td>−5.62</td><td>226 at <code>tol = 1e-3</code></td></tr>
+  <tr><td>September sample, age² dropped</td><td>–</td><td>−5.18</td><td>228 at <code>tol = 1e-3</code></td></tr>
+</table>
+<p>The coefficient changed by a factor of seven between two samples drawn from the same population, while the ATT moved by about 0.4 citations per year when the term was removed altogether. The near-identical iteration counts show that age² is not what makes the fits slow. The tolerance setting is: fect 2.4.5 defaults to <code>tol = 1e-5</code>, which never converged on this panel in over an hour, while <code>tol = 1e-3</code> reproduces the saved ATT in 226 iterations and about five minutes.</p>
+
+<h2>5. What to do</h2>
+<div class="rec">
+  <p><strong>Specification.</strong> The fect and ETWFE formulas in <code>_06_fect_analysis.Rmd</code> use SJR as the only covariate. The factor already provides a paper-specific linear trend, more flexibly than age² can. The preregistration lists age² as a covariate, so this is a documented deviation; the rationale is the algebra above, and the effect on the ATT is small and reportable. The saved model <code>models/fit_citation_Scopus.rds</code> was fitted with age² and reflects the preregistered formula until the next first-stage run.</p>
+  <p>In the ETWFE Poisson robustness check the same term does real damage, because <code>etwfe</code> interacts every covariate with all cohort-by-year treatment cells. There the estimate swings from +8% without age² to −25% with it.</p>
+</div>
+
+<h2>Notes</h2>
+<p class="aside"><strong>Unbalanced panel.</strong> Our real panel starts each paper in its publication year, so the grid is not rectangular. The identity age² = year² − 2 · year · pub + pub² holds in every observed cell regardless, and the fixed effects still absorb the year² and pub² pieces exactly, because each is constant within the group its effect indexes. Balance only affects how the demeaning is computed, not what survives it.</p>
+<p class="aside"><strong>A design point that follows from Figure 4.</strong> With a linear factor and level-proportional loadings, each treated paper's counterfactual is its own pre-replication growth line carried forward. The preregistered placebo test checks this directly by holding out the last three pre-replication years: on the 392 treated papers with enough history the forecast error is +0.3 citations per year (p = .82), so the extrapolation holds up to the replication. A trend reversal coinciding exactly with the replication year cannot be ruled out by any pre-period test; only a comparison with successfully replicated originals speaks to that.</p>
+
+<h2>References</h2>
+<ul>
+  <li>Liu, L., Wang, Y., &amp; Xu, Y. (2024). A practical guide to counterfactual estimators for causal inference with time-series cross-sectional data. <em>American Journal of Political Science</em>, 68(1), 160–176. <a href="https://doi.org/10.1111/ajps.12723">https://doi.org/10.1111/ajps.12723</a></li>
+  <li>Wooldridge, J. M. (2023). Simple approaches to nonlinear difference-in-differences with panel data. <em>The Econometrics Journal</em>, 26(3), C31–C66. <a href="https://doi.org/10.1093/ectj/utad016">https://doi.org/10.1093/ectj/utad016</a></li>
+</ul>
+
+</main>
+</body>
+</html>
