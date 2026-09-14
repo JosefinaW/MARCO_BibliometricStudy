@@ -287,3 +287,12 @@ moderator_primary_formula <- function(data) {
     'SNIP_centered','snip_missing_f','is_oa_f','is_oa_missing','same_journal_f',
     'same_journal_missing',subject),intercept=FALSE)
 }
+
+# One cluster per replication publication. Recovered identifiers take precedence over
+# the cached DOI; an original whose replication has no DOI forms its own cluster.
+moderator_replication_id <- function(data) {
+  id <- dplyr::coalesce(data$recovered_doi_r, normalise_moderator_doi(data$doi_r),
+    paste0('no_doi_', data$doi_o))
+  stopifnot(!anyNA(id))
+  id
+}
