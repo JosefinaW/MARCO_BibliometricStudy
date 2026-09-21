@@ -126,6 +126,7 @@ replic_year <- df_meta %>% dplyr::select(doi_o, doi_r, publication_year_r)
 orig_year <- full_matched_df %>% dplyr::select(doi, publication_year, issn_l)
 
 analysis_df <- prep_analysis_df(analysis_df, replic_year, orig_year)
+analysis_df <- drop_replicated_controls(analysis_df, full_matched_df)
 saveRDS(analysis_df, "data/analysis_df.rds")
 ```
 

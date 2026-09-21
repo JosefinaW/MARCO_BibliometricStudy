@@ -114,7 +114,9 @@ already_used_dois <- if (!is.null(existing_full_matched_df))
 # get treated/control
 treated_dois_all <- sample(unique(combination$doi_o))  # full shuffled list (respects seed)
 treated_dois     <- setdiff(treated_dois_all, already_matched_treated)  # only unmatched
-control_studies  <- setdiff(unique(combination$doi), treated_dois_all)
+# controls must be non-replicated: drop treated originals and any original FLoRA lists as replicated
+flora_replicated <- read_csv("data/flora_replicated_originals.csv", show_col_types = FALSE)$doi_o
+control_studies  <- setdiff(unique(combination$doi), c(treated_dois_all, flora_replicated))
 
 message(sprintf("Already matched: %d | Remaining: %d", length(already_matched_treated), length(treated_dois)))
 # --------
