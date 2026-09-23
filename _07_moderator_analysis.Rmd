@@ -1605,7 +1605,7 @@ reg_model <- rma.mv(
 
 summary(reg_model)
 reg_model$sigma2
-
+saveRDS(reg_model, paste0("models/reg_model_", data_source, "_", data_outcome, ".rds"))
 # residuals / QQ
 z <- rstandard(reg_model)$z
 par(mfrow = c(1, 2))
@@ -1634,18 +1634,22 @@ summary(primary)
 ```
 #metaCART loop
 ```{r}
-n_iter <- 5000
+n_iter <- 200
 tree_results <- vector("list", n_iter)
 
 # Build formula for metaCART
 subj_vars <- paste(grep("^subj_", colnames(primary), value = TRUE), collapse = " + ")
 
-cart_formula <- as.formula(paste(
-  "att ~ age_r + SNIP_centered + snip_missing + has_overlap + same_journal + 
-   is_oa + publication_strategy + seniority +",
-  subj_vars
-))
+# cart_formula <- as.formula(paste(
+#   "att ~ age_r + SNIP_centered + snip_missing + has_overlap + same_journal + 
+#    is_oa + publication_strategy + seniority +",
+#   subj_vars
+# ))
 
+cart_formula <- as.formula(paste(
+  "att ~ age_r + SNIP_centered + snip_missing_f + has_overlap_f +
+   same_journal_f + is_oa_f + is_oa_missing + publication_strategy
+))
 set.seed(42)
 for (i in seq_len(n_iter)) {
   # Sample one timepoint per study
@@ -1656,7 +1660,7 @@ for (i in seq_len(n_iter)) {
     as.data.frame()
 
   # Fit tree, catch errors
-  tree_results[[i]] <- tryCatch(
+  tree_results[i] <- list(tryCatch(
     {
       metacart::REmrt(
         formula = cart_formula,
@@ -1666,7 +1670,7 @@ for (i in seq_len(n_iter)) {
         data    = iter_data
       )
     },
-    error = function(e) NULL
+    error = function(e) NULL)
   )
 
   if (i %% 500 == 0) message("Iteration ", i, " of ", n_iter)
@@ -1683,7 +1687,7 @@ saveRDS(tree_results_ok,
 # ------------------------------------------------------------------
 # Summarise results
 # ------------------------------------------------------------------
-tree_results_ok[[1]]$tree
+tree_results_ok[1]$tree
 # Helper: extract variable used at root split
 get_root_var <- function(fit) {
   tryCatch(
@@ -1772,7 +1776,36 @@ for (v in key_mods) {
 }
 ```
 
+#debugging
+```{r}
+iter_data <- primary %>%
+  group_by(doi_o) %>%
+  slice_sample(n = 1) %>%
+  ungroup() %>%
+  as.data.frame()
 
+# 1. are all formula variables present?
+setdiff(all.vars(cart_formula), colnames(iter_data))
+
+# 2. what does REmrt actually accept?
+args(metacart::REmrt)
+
+# 3. run it with no tryCatch
+metacart::REmrt(
+  formula = cart_formula,
+  vi      = sampling_var,
+  cp      = 0.01,
+  nboot   = 50,
+  data    = iter_data
+)
+
+range(iter_data$sampling_var)
+sum(iter_data$sampling_var <= 0)
+sum(is.na(iter_data$sampling_var))
+quantile(iter_data$sampling_var, c(0, .01, .5, .99, 1))
+
+
+```
 #explorative analysis for FreD
 ```{r}
 # devtools::install_github("forrtproject/FReD")

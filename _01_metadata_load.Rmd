@@ -38,6 +38,9 @@ df$doi_r <- gsub(" ", "", df$doi_r)
 df <- df %>% mutate(doi_o = tolower(as.character(doi_o)))
 df <- df %>% mutate(doi_r = tolower(as.character(doi_r)))
 ```
+
+
+
 # what to do if multiple replications per study - replication study selection
 
 ```{r}
@@ -72,6 +75,8 @@ nrow(df)
 length(unique(df$doi_r))
 df %>% filter(is.na(doi_r)) %>% select(doi_o, url_r)
 df %>% group_by(author_r) %>% filter(n() > 1)
+length(unique(df$doi_o))
+View(df)
 ```
 
 # getting metadata for the original studies
@@ -121,7 +126,8 @@ OA_list_r <- cached_oa_fetch(
   output = "tibble",
   verbose = TRUE
 )
-
+OA_list_r<- OA_list_r%>%
+  mutate(doi = stringr::str_remove(doi, regex("^https?://(dx\\.)?doi\\.org/", TRUE)))
 saveRDS(OA_list_r, "data/metadata_r_OpenAlex.rds")
 ```
 #append and select only earliest replication study

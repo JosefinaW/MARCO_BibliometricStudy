@@ -101,6 +101,19 @@ analysis_padded %>%
   )
 
 table(analysis_padded$publication_year)
+analysis_padded %>%
+  group_by(doi_queried) %>%
+  summarise(
+    g   = if (any(D == 1)) min(year[D == 1]) else 0L,
+    pub_year   = first(publication_year),
+    pub_year_r = suppressWarnings(max(publication_year_r, na.rm = TRUE)),
+    n_years    = n(),
+    max_year   = max(year),
+    .groups = "drop"
+  ) %>%
+  filter(g == 2023)
+
+analysis_padded %>% filter(doi_queried == "10.1017/bpp.2016.2") %>% arrange(year) %>% View()
 ```
 # add covariates
 ```{r}
@@ -161,7 +174,7 @@ fit_factor <- fect(
 # analysis - run only with the factor selected as best
 ```{r}
 fit <- fect(
-  n_citations ~ D + age2 + sjr,
+  n_citations ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -170,10 +183,11 @@ fit <- fect(
   CV = TRUE,
   r = 1,
   nboots = 500,
-  keep.sims = FALSE,
-  min.T0 = 3
+  keep.sims = TRUE,
+  min.T0 = 2
 )
 
+saveRDS(fit, paste0("models/fit_citation2_", data_source, ".rds"))
 
 print(fit)
 
@@ -188,7 +202,23 @@ plot(fit,
 )
 
 
-saveRDS(fit, paste0("models/fit_citation_", data_source, ".rds"))
+
+
+#why the NA
+# per-unit average effect over that unit's treated periods
+E_tr <- replace(E, !M, NA)
+unit_att <- colMeans(E_tr, na.rm = TRUE)
+
+# how many units are NaN (the likely source of fect's NA)
+sum(is.nan(unit_att))
+which(is.nan(unit_att))
+
+# the unit-weighted ATT
+mean(unit_att, na.rm = TRUE)    # which units, and how many periods
+
+sum(colSums(M) > 0)      # units with at least one treated period
+length(unit_att)         # total columns in eff
+sum(!is.nan(unit_att))   # units contributing to the mean
 ```
 
 # control tests
@@ -245,7 +275,7 @@ res$test.out
 str(analysis_padded)
 
 fit_factor_nococit <- fect(
-  n_nococit ~ D + age2 + sjr,
+  n_nococit ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -253,8 +283,8 @@ fit_factor_nococit <- fect(
   se = TRUE,
   CV = TRUE,
   r = 1:4,
-  nboots = 500,
-  keep.sims = TRUE,
+  nboots = 200,
+  keep.sims = FALSE,
   min.T0 = 5
 )
 ```
@@ -262,7 +292,7 @@ fit_factor_nococit <- fect(
 # analysis - run only with the factor selected as best
 ```{r}
 fit_nococit <- fect(
-  n_nococit ~ D + age2 + sjr,
+  n_nococit ~ D + sjr,
   data = analysis_padded,
   index = c("doi_queried", "year"),
   method = "ife",
@@ -270,9 +300,9 @@ fit_nococit <- fect(
   se = TRUE,
   CV = TRUE,
   r = 1,
-  nboots = 300,
+  nboots = 500,
   keep.sims = TRUE,
-  min.T0 = 3
+  min.T0 = 2
 )
 
 
@@ -343,16 +373,58 @@ analysis_padded <- analysis_padded %>%
   ) %>%
   ungroup()
 
+
+
 analysis_etwfe <- analysis_padded %>%
   filter(
     !is.na(sjr)
   )
 
+analysis_etwfe <- analysis_padded %>%
+  filter(!is.na(sjr)) %>%
+  mutate(
+    age2_z = as.numeric(scale(age2)),
+    sjr_z  = as.numeric(scale(sjr))
+  )
+
+analysis_etwfe %>%
+  group_by(doi_queried) %>%
+  filter(any(D == 1)) %>%
+  ungroup() %>%
+  summarise(n_treated = n_distinct(doi_queried))
+
+analysis_etwfe %>%
+  distinct(doi_queried, g) %>%
+  count(g, name = "n_units") %>%
+  print(n = Inf)
+
+#temporary fix
+analysis_etwfe2 <- analysis_etwfe %>%
+  filter(g != 2023) %>%                      # drop the singleton
+  mutate(log_age = log((year - publication_year) + 1))
+
+
+etwfe_fit2 <- etwfe(
+  fml    = n_citations ~ sjr_z + log_age,    # log_age replaces age2_z
+  tvar   = year,
+  gvar   = g,
+  data   = analysis_etwfe2,
+  ivar   = doi_queried,
+  family = "poisson",
+  vcov   = ~doi_queried
+)
+
+max(abs(coef(etwfe_fit2)))                   # want well under ~10
+emfx(etwfe_fit2, type = "simple")
+
+treated_post <- analysis_etwfe2 %>% filter(g > 0, year >= g)
+mean(treated_post$n_citations, na.rm = TRUE)
+quantile(treated_post$n_citations, c(.5, .9, .99), na.rm = TRUE)
+
 # model
-# Set fixest options globally before fitting
-setFixest_estimation(glm.iter = 10000, fixef.iter = 10000)
+
 etwfe_fit <- etwfe(
-  fml       = n_citations ~ sjr + age2, # controls; unit & time FE added automatically
+  fml       = n_citations ~ sjr_z + age2_z, # controls; unit & time FE added automatically
   tvar      = year, # time variable
   gvar      = g, # treatment timing (0 = never treated)
   data      = analysis_etwfe,
@@ -361,10 +433,20 @@ etwfe_fit <- etwfe(
   vcov      = ~doi_queried
 )
 
-summary(etwfe_fit)
+etwfe_fit$convStatus          # must be TRUE
+range(fitted(etwfe_fit))      # must be plausible citation counts, not 1e6+
 
-iplot(etwfe_fit)
+#diagnostics
+cf <- coef(etwfe_fit)
+sum(abs(cf) > 10)                    # how many suspect coefficients
+sort(cf)[1:10]                       # most negative
+sort(cf, decreasing = TRUE)[1:10]    # most positive
 
+
+library(marginaleffects)
+per_obs <- slopes(etwfe_fit, variables = ".Dtreat",
+                  newdata = subset(etwfe_fit$data_etwfe, .Dtreat == TRUE))
+quantile(per_obs$estimate, c(0, .01, .25, .5, .75, .99, 1), na.rm = TRUE)
 # Step 3: Aggregate to a single ATT
 att <- emfx(etwfe_fit, type = "simple")
 print(att)
@@ -398,6 +480,16 @@ emfx(etwfe_fit, type = "simple") %>% plot()
 
 # By cohort (closer to "Tr units equally weighted" — each treatment timing group gets equal weight)
 emfx(etwfe_fit, type = "group") %>% plot()
+
+att_dynamic_full <- emfx(etwfe_fit, type = "event", post_only = FALSE)
+att_dynamic_full
+
+ggplot(att_dynamic_full, aes(event, estimate)) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = -0.5, linetype = 3, colour = "grey40") +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+  labs(x = "Years since replication", y = "Effect on annual citations") +
+  theme_minimal(base_size = 14)
 ```
 
 # for citations without co_citation
