@@ -31,6 +31,29 @@ prep_analysis_df <- function(df, replic_year, orig_year) {
   df
 }
 
+#' Remove controls that are replicated originals or are themselves replications.
+#' The comparator pool is registered as articles that are neither replicated nor
+#' replications. A control is dropped if FLoRA lists a replication of it
+#' (data/flora_replicated_originals.csv, built by R/flora_replicated_originals.R),
+#' if FLoRA lists it as a replication (data/flora_replications.csv, built by
+#' R/flora_replications.R), or if it heads its own matching group in
+#' full_matched_df, i.e. it was sampled as a treated original.
+drop_replicated_controls <- function(df, full_matched_df,
+                                     flora_path = "data/flora_replicated_originals.csv",
+                                     replications_path = "data/flora_replications.csv") {
+  flora_originals <- readr::read_csv(flora_path, show_col_types = FALSE)$doi_o
+  flora_reps <- readr::read_csv(replications_path, show_col_types = FALSE)$doi_r
+  matching_heads <- tolower(trimws(full_matched_df$treated_doi_queried))
+  replicated <- unique(c(flora_originals, flora_reps, matching_heads))
+
+  dropped <- df %>%
+    dplyr::filter(is.na(publication_year_r), tolower(trimws(doi_queried)) %in% replicated) %>%
+    dplyr::distinct(doi_queried)
+  message(nrow(dropped), " replicated or replication controls removed")
+
+  df %>% dplyr::filter(!doi_queried %in% dropped$doi_queried)
+}
+
 #' Pad panel so every doi-year from publication to y_max has a row (0 citations for missing years)
 pad_panel <- function(df, y_max = 2025) {
   padded <- df %>%
