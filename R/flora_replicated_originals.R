@@ -5,7 +5,7 @@
 # To update, set flora_commit to a newer fred-data commit and rerun.
 suppressPackageStartupMessages(library(tidyverse))
 
-flora_commit <- "aa55025cbcdb46860e73d77ec49a980bef2251d4" # 2026-09-21
+flora_commit <- "cb02db7930176d05964d3afe98f460ffa364f366" # 2026-09-23
 flora_url <- paste0("https://raw.githubusercontent.com/forrtproject/fred-data/",
                     flora_commit, "/output/flora.csv")
 
